@@ -81,3 +81,25 @@ it('requires pestphp/pest as dev dependency for testing', function () {
     expect($composer)->toHaveKey('require-dev')
         ->and($composer['require-dev'])->toHaveKey('pestphp/pest');
 });
+
+it('keeps packages/core free of Marko\Queue references', function (): void {
+    $sourceDirectory = dirname(__DIR__, 2) . '/src';
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($sourceDirectory, FilesystemIterator::SKIP_DOTS),
+    );
+    $offenders = [];
+
+    foreach ($files as $file) {
+        $source = (string) file_get_contents($file->getPathname());
+
+        if ($file->getExtension() === 'php' && str_contains($source, 'Marko\\Queue')) {
+            $offenders[] = substr($file->getPathname(), strlen($sourceDirectory) + 1);
+        }
+    }
+
+    $composer = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true);
+
+    expect($offenders)->toBeEmpty()
+        ->and($composer['require'])->not->toHaveKey('marko/queue')
+        ->and($composer['require-dev'])->not->toHaveKey('marko/queue');
+});

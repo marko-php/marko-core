@@ -255,6 +255,13 @@ it('returns false from has() for non-resolvable interfaces without binding', fun
         ->and($container->has('NonExistentClass'))->toBeFalse();
 });
 
+it('reports instances registered via instance() from has()', function (): void {
+    $container = new Container();
+    $container->instance(UnboundInterface::class, new class () implements UnboundInterface {});
+
+    expect($container->has(UnboundInterface::class))->toBeTrue();
+});
+
 it('resolves closure bindings by calling the closure with container', function (): void {
     $container = new Container();
     $container->bind(UnboundInterface::class, fn (Container $c) => new class () implements UnboundInterface {});

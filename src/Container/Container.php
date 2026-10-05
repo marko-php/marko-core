@@ -59,7 +59,7 @@ class Container implements ContainerInterface
     public function has(
         string $id,
     ): bool {
-        return isset($this->bindings[$id]) || class_exists($id);
+        return isset($this->instances[$id]) || isset($this->bindings[$id]) || class_exists($id);
     }
 
     public function singleton(

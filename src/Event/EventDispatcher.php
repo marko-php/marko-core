@@ -5,21 +5,25 @@ declare(strict_types=1);
 namespace Marko\Core\Event;
 
 use Marko\Core\Container\ContainerInterface;
-use Marko\Queue\AsyncObserverJob;
-use Marko\Queue\QueueInterface;
+use Marko\Core\Exceptions\EventException;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 
-readonly class EventDispatcher implements EventDispatcherInterface
+class EventDispatcher implements EventDispatcherInterface
 {
+    /**
+     * Resolved on the first async observer, never before, so requests that
+     * dispatch no async observers never build the queue or open its connection.
+     */
+    private ?AsyncObserverDispatcherInterface $asyncObserverDispatcher = null;
+
     public function __construct(
-        private ContainerInterface $container,
-        private ObserverRegistry $registry,
-        private ?QueueInterface $queue = null,
+        private readonly ContainerInterface $container,
+        private readonly ObserverRegistry $registry,
     ) {}
 
     /**
-     * @throws ContainerExceptionInterface|NotFoundExceptionInterface
+     * @throws ContainerExceptionInterface|NotFoundExceptionInterface|EventException
      */
     public function dispatch(
         Event $event,
@@ -35,16 +39,33 @@ readonly class EventDispatcher implements EventDispatcherInterface
                 break;
             }
 
-            if ($definition->async && $this->queue !== null) {
-                $job = new AsyncObserverJob(
-                    $definition->observerClass,
-                    serialize($event),
-                );
-                $this->queue->push($job);
-            } else {
-                $observer = $this->container->get($definition->observerClass);
-                $observer->handle($event);
+            if ($definition->async) {
+                $this->asyncObserverDispatcher($definition->observerClass, $eventClass)
+                    ->dispatch($definition->observerClass, $event);
+
+                continue;
             }
+
+            $observer = $this->container->get($definition->observerClass);
+            $observer->handle($event);
         }
+    }
+
+    /**
+     * @throws ContainerExceptionInterface|NotFoundExceptionInterface|EventException
+     */
+    private function asyncObserverDispatcher(
+        string $observerClass,
+        string $eventClass,
+    ): AsyncObserverDispatcherInterface {
+        if ($this->asyncObserverDispatcher !== null) {
+            return $this->asyncObserverDispatcher;
+        }
+
+        if (!$this->container->has(AsyncObserverDispatcherInterface::class)) {
+            throw EventException::noAsyncObserverDispatcher($observerClass, $eventClass);
+        }
+
+        return $this->asyncObserverDispatcher = $this->container->get(AsyncObserverDispatcherInterface::class);
     }
 }

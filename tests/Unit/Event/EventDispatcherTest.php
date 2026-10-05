@@ -3,13 +3,12 @@
 declare(strict_types=1);
 
 use Marko\Core\Container\Container;
+use Marko\Core\Event\AsyncObserverDispatcherInterface;
 use Marko\Core\Event\Event;
 use Marko\Core\Event\EventDispatcher;
 use Marko\Core\Event\ObserverDefinition;
 use Marko\Core\Event\ObserverRegistry;
-use Marko\Queue\AsyncObserverJob;
-use Marko\Queue\QueueInterface;
-use Marko\Testing\Fake\FakeQueue;
+use Marko\Core\Exceptions\EventException;
 
 // Test fixtures
 class DispatcherTestEvent extends Event
@@ -230,32 +229,9 @@ it('supports stopping event propagation from observer', function (): void {
         ->and($event->propagationStopped)->toBeTrue();
 });
 
-it('accepts optional queue', function (): void {
-    $container = new Container();
-    $registry = new ObserverRegistry();
-    $queue = new FakeQueue();
-
-    // Create with queue
-    $dispatcherWithQueue = new EventDispatcher($container, $registry, $queue);
-
-    // Create without queue (optional)
-    $dispatcherWithoutQueue = new EventDispatcher($container, $registry);
-
-    // Verify the type hint is properly defined (this will fail if parameter doesn't exist)
-    $reflection = new ReflectionClass(EventDispatcher::class);
-    $constructor = $reflection->getConstructor();
-    $params = $constructor->getParameters();
-
-    expect($dispatcherWithQueue)->toBeInstanceOf(EventDispatcher::class)
-        ->and($dispatcherWithoutQueue)->toBeInstanceOf(EventDispatcher::class)
-        ->and($params)->toHaveCount(3)
-        ->and($params[2]->getName())->toBe('queue')
-        ->and($params[2]->isOptional())->toBeTrue()
-        ->and($params[2]->getType()?->getName())->toBe(QueueInterface::class);
-});
-
 class AsyncTestObserver
 {
+    /** @noinspection PhpUnused - Invoked via reflection */
     public function handle(
         DispatcherTestEvent $event,
     ): void {
@@ -263,88 +239,172 @@ class AsyncTestObserver
     }
 }
 
-it('queues async observers', function (): void {
-    $container = new Container();
-    $registry = new ObserverRegistry();
-    $queue = new FakeQueue();
+class RecordingAsyncObserverDispatcher implements AsyncObserverDispatcherInterface
+{
+    /** @var list<array{observerClass: string, event: Event}> */
+    public array $dispatched = [];
 
-    // Register an async observer
+    public function dispatch(
+        string $observerClass,
+        Event $event,
+    ): void {
+        $this->dispatched[] = ['observerClass' => $observerClass, 'event' => $event];
+    }
+}
+
+/**
+ * @return array{container: Container, asyncDispatcher: RecordingAsyncObserverDispatcher, resolutions: object}
+ */
+function createContainerWithAsyncDispatcher(): array
+{
+    $container = new Container();
+    $asyncDispatcher = new RecordingAsyncObserverDispatcher();
+    $resolutions = (object) ['count' => 0];
+
+    $container->bind(
+        AsyncObserverDispatcherInterface::class,
+        function () use ($asyncDispatcher, $resolutions): AsyncObserverDispatcherInterface {
+            $resolutions->count++;
+
+            return $asyncDispatcher;
+        },
+    );
+
+    return ['container' => $container, 'asyncDispatcher' => $asyncDispatcher, 'resolutions' => $resolutions];
+}
+
+function registerAsyncTestObserver(
+    ObserverRegistry $registry,
+    int $priority = 0,
+): void {
     $registry->register(new ObserverDefinition(
         observerClass: AsyncTestObserver::class,
         eventClass: DispatcherTestEvent::class,
+        priority: $priority,
         async: true,
     ));
+}
 
-    $dispatcher = new EventDispatcher($container, $registry, $queue);
+it('hands async observers to the bound async observer dispatcher instead of running them inline', function (): void {
+    ['container' => $container, 'asyncDispatcher' => $asyncDispatcher] = createContainerWithAsyncDispatcher();
+    $registry = new ObserverRegistry();
+    registerAsyncTestObserver($registry);
     $event = new DispatcherTestEvent();
 
-    $dispatcher->dispatch($event);
+    new EventDispatcher($container, $registry)->dispatch($event);
 
     expect($event->handledBy)->toBeEmpty()
-        ->and($queue->pushed)->toHaveCount(1)
-        ->and($queue->pushed[0]['job'])->toBeInstanceOf(AsyncObserverJob::class)
-        ->and($queue->pushed[0]['job']->observerClass)->toBe(AsyncTestObserver::class);
+        ->and($asyncDispatcher->dispatched)->toHaveCount(1)
+        ->and($asyncDispatcher->dispatched[0]['observerClass'])->toBe(AsyncTestObserver::class)
+        ->and($asyncDispatcher->dispatched[0]['event'])->toBe($event);
 });
 
-class SyncTestObserver
-{
-    public function handle(
-        DispatcherTestEvent $event,
-    ): void {
-        $event->handledBy[] = 'sync';
-    }
-}
+it(
+    'throws an EventException with an install suggestion when an async observer fires and no dispatcher is bound',
+    function (): void {
+        $registry = new ObserverRegistry();
+        registerAsyncTestObserver($registry);
+        $event = new DispatcherTestEvent();
+        $dispatcher = new EventDispatcher(new Container(), $registry);
+        $thrown = null;
 
-it('executes sync observers immediately', function (): void {
-    $container = new Container();
+        try {
+            $dispatcher->dispatch($event);
+        } catch (EventException $e) {
+            $thrown = $e;
+        }
+
+        expect($thrown)->toBeInstanceOf(EventException::class)
+            ->and($thrown?->getMessage())->toBe(
+                'Observer ' . AsyncTestObserver::class . ' is marked async but no queue is installed',
+            )
+            ->and($thrown?->getSuggestion())->toContain('composer require marko/queue marko/queue-sync')
+            ->and($thrown?->getSuggestion())->toContain('async: true')
+            ->and($event->handledBy)->toBeEmpty();
+    },
+);
+
+it('does not resolve the async observer dispatcher when no async observer is dispatched', function (): void {
+    ['container' => $container, 'resolutions' => $resolutions] = createContainerWithAsyncDispatcher();
     $registry = new ObserverRegistry();
-    $queue = new FakeQueue();
-
-    // Register a sync observer (async=false, the default)
     $registry->register(new ObserverDefinition(
-        observerClass: SyncTestObserver::class,
+        observerClass: FirstObserver::class,
         eventClass: DispatcherTestEvent::class,
-        async: false,
     ));
-
-    $dispatcher = new EventDispatcher($container, $registry, $queue);
     $event = new DispatcherTestEvent();
 
-    $dispatcher->dispatch($event);
+    new EventDispatcher($container, $registry)->dispatch($event);
 
-    // Event was handled immediately
-    expect($event->handledBy)->toBe(['sync']);
-
-    // No job was pushed to queue
-    expect($queue->pushed)->toBeEmpty();
+    expect($event->handledBy)->toBe(['first'])
+        ->and($resolutions->count)->toBe(0);
 });
 
-class AsyncFallbackObserver
-{
-    public function handle(
-        DispatcherTestEvent $event,
-    ): void {
-        $event->handledBy[] = 'async-fallback';
-    }
-}
-
-it('falls back when no queue', function (): void {
-    $container = new Container();
+it('resolves the async observer dispatcher once and reuses it across dispatches', function (): void {
+    [
+        'container' => $container,
+        'asyncDispatcher' => $asyncDispatcher,
+        'resolutions' => $resolutions,
+    ] = createContainerWithAsyncDispatcher();
     $registry = new ObserverRegistry();
-
-    // Register an async observer
-    $registry->register(new ObserverDefinition(
-        observerClass: AsyncFallbackObserver::class,
-        eventClass: DispatcherTestEvent::class,
-        async: true,
-    ));
-
-    // Create dispatcher WITHOUT queue
+    registerAsyncTestObserver($registry);
     $dispatcher = new EventDispatcher($container, $registry);
-    $event = new DispatcherTestEvent();
 
-    $dispatcher->dispatch($event);
+    $dispatcher->dispatch(new DispatcherTestEvent());
+    $dispatcher->dispatch(new DispatcherTestEvent());
 
-    // Event was handled immediately (graceful degradation)
-    expect($event->handledBy)->toBe(['async-fallback']);
+    expect($resolutions->count)->toBe(1)
+        ->and($asyncDispatcher->dispatched)->toHaveCount(2);
+});
+
+it('keeps priority order and propagation across a mix of sync and async observers', function (): void {
+    ['container' => $container, 'asyncDispatcher' => $asyncDispatcher] = createContainerWithAsyncDispatcher();
+
+    $mixedRegistry = new ObserverRegistry();
+    $mixedRegistry->register(new ObserverDefinition(
+        observerClass: LowPriorityObserver::class,
+        eventClass: DispatcherTestEvent::class,
+        priority: 10,
+    ));
+    registerAsyncTestObserver($mixedRegistry, priority: 50);
+    $mixedRegistry->register(new ObserverDefinition(
+        observerClass: HighPriorityObserver::class,
+        eventClass: DispatcherTestEvent::class,
+        priority: 100,
+    ));
+    $mixed = new DispatcherTestEvent();
+    $handledWhenQueued = [];
+    $recordingDispatcher = new class ($asyncDispatcher, $handledWhenQueued) implements AsyncObserverDispatcherInterface
+    {
+        public function __construct(
+            private readonly RecordingAsyncObserverDispatcher $inner,
+            /** @noinspection PhpPropertyOnlyWrittenInspection - Reference property modifies external variable */
+            private array &$handledWhenQueued,
+        ) {}
+
+        public function dispatch(
+            string $observerClass,
+            Event $event,
+        ): void {
+            /** @var DispatcherTestEvent $event */
+            $this->handledWhenQueued = $event->handledBy;
+            $this->inner->dispatch($observerClass, $event);
+        }
+    };
+    $container->instance(AsyncObserverDispatcherInterface::class, $recordingDispatcher);
+    new EventDispatcher($container, $mixedRegistry)->dispatch($mixed);
+
+    $stoppingRegistry = new ObserverRegistry();
+    $stoppingRegistry->register(new ObserverDefinition(
+        observerClass: StoppingObserver::class,
+        eventClass: DispatcherTestEvent::class,
+        priority: 100,
+    ));
+    registerAsyncTestObserver($stoppingRegistry, priority: 50);
+    $stopped = new DispatcherTestEvent();
+    new EventDispatcher($container, $stoppingRegistry)->dispatch($stopped);
+
+    expect($mixed->handledBy)->toBe(['high', 'low'])
+        ->and($handledWhenQueued)->toBe(['high'])
+        ->and($asyncDispatcher->dispatched)->toHaveCount(1)
+        ->and($stopped->handledBy)->toBe(['stopping']);
 });

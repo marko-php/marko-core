@@ -18,6 +18,19 @@ class EventException extends MarkoException
         );
     }
 
+    public static function noAsyncObserverDispatcher(
+        string $observerClass,
+        string $eventClass,
+    ): self {
+        return new self(
+            message: "Observer $observerClass is marked async but no queue is installed",
+            context: "While dispatching '$eventClass': no AsyncObserverDispatcherInterface is bound, so the observer cannot be queued",
+            suggestion: 'Run: composer require marko/queue marko/queue-sync (runs async observers inline through the queue), '
+                . 'or install marko/queue with a real driver such as marko/queue-database or marko/queue-rabbitmq. '
+                . "Or remove async: true from the observer's #[Observer] attribute to run it during the request",
+        );
+    }
+
     public static function classNotFoundDuringDiscovery(
         string $filePath,
         string $missingClass,
