@@ -12,6 +12,7 @@ use Marko\Core\Plugin\PluginInterceptor;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
+use ReflectionMethod;
 use ReflectionNamedType;
 
 class Container implements ContainerInterface
@@ -182,7 +183,14 @@ class Container implements ContainerInterface
                     && class_exists($noDriverClass)
                     && method_exists($noDriverClass, 'noDriverInstalled')
                 ) {
-                    throw $noDriverClass::noDriverInstalled();
+                    // Pass the unresolved interface to factories that accept it, so the
+                    // exception can tell a missing driver apart from a missing binding.
+                    $acceptsInterface = new ReflectionMethod($noDriverClass, 'noDriverInstalled')
+                        ->getNumberOfParameters() > 0;
+
+                    throw $acceptsInterface
+                        ? $noDriverClass::noDriverInstalled($id)
+                        : $noDriverClass::noDriverInstalled();
                 }
             }
 
