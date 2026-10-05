@@ -385,6 +385,53 @@ PHP;
     rmdir($tempDir);
 });
 
+it('discovers declared flags from the Command attribute', function (): void {
+    $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
+    mkdir($tempDir . '/src', 0755, true);
+
+    $commandCode = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace TestCommandModuleFlags1;
+
+use Marko\Core\Attributes\Command;
+use Marko\Core\Command\CommandInterface;
+use Marko\Core\Command\Input;
+use Marko\Core\Command\Output;
+
+#[Command(name: 'app:flagged', description: 'Has flags', flags: ['force', 'f'])]
+class FlaggedCommand implements CommandInterface
+{
+    public function execute(
+        Input $input,
+        Output $output,
+    ): int {
+        return 0;
+    }
+}
+PHP;
+    file_put_contents($tempDir . '/src/FlaggedCommand.php', $commandCode);
+
+    $manifest = new ModuleManifest(
+        name: 'test/module',
+        version: '1.0.0',
+        path: $tempDir,
+    );
+
+    $discovery = new CommandDiscovery(new ClassFileParser());
+    $commands = $discovery->discover([$manifest]);
+
+    expect($commands)->toHaveCount(1)
+        ->and($commands[0]->flags)->toBe(['force', 'f']);
+
+    // Cleanup
+    unlink($tempDir . '/src/FlaggedCommand.php');
+    rmdir($tempDir . '/src');
+    rmdir($tempDir);
+});
+
 it('creates CommandDefinition with empty aliases when none specified', function (): void {
     $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
     mkdir($tempDir . '/src', 0755, true);

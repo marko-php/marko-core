@@ -332,6 +332,46 @@ it('returns correct exit code when invoked via alias', function (): void {
     expect($exitCode)->toBe(42);
 });
 
+it('passes declared flags into the input given to the command', function (): void {
+    $input = new Input(['marko', 'queue:retry', '--all', '5']);
+    $output = new Output(fopen('php://memory', 'w'));
+
+    $receivedInput = null;
+    $command = new class ($receivedInput) implements CommandInterface
+    {
+        public function __construct(
+            /** @noinspection PhpPropertyOnlyWrittenInspection - Reference property modifies external variable */
+            private ?Input &$receivedInput,
+        ) {}
+
+        public function execute(
+            Input $input,
+            Output $output,
+        ): int {
+            $this->receivedInput = $input;
+
+            return 0;
+        }
+    };
+
+    $registry = new CommandRegistry();
+    $registry->register(new CommandDefinition(
+        commandClass: $command::class,
+        name: 'queue:retry',
+        flags: ['all'],
+    ));
+
+    $container = $this->createMock(ContainerInterface::class);
+    $container->method('get')
+        ->willReturn($command);
+
+    $runner = new CommandRunner($container, $registry);
+    $runner->run('queue:retry', $input, $output);
+
+    expect($receivedInput->getOption('all'))->toBe('true')
+        ->and($receivedInput->getArgument(0))->toBe('5');
+});
+
 it('passes Input and Output when invoked via alias', function (): void {
     $input = new Input(['marko', 'tc', 'hello', 'world']);
     $output = new Output(fopen('php://memory', 'w'));

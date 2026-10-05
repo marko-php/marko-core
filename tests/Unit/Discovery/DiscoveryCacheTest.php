@@ -71,6 +71,7 @@ function samplePayload(): array
                 name: 'cache:clear',
                 description: 'Clears the cache',
                 aliases: ['cc'],
+                flags: ['force'],
             ),
         ],
     ];
@@ -192,7 +193,8 @@ describe('DiscoveryCache', function (): void {
                 ->and($loaded['commands'][0]->commandClass)->toBe('App\CacheCommand')
                 ->and($loaded['commands'][0]->name)->toBe('cache:clear')
                 ->and($loaded['commands'][0]->description)->toBe('Clears the cache')
-                ->and($loaded['commands'][0]->aliases)->toBe(['cc']);
+                ->and($loaded['commands'][0]->aliases)->toBe(['cc'])
+                ->and($loaded['commands'][0]->flags)->toBe(['force']);
         },
     );
 
@@ -355,6 +357,13 @@ describe('DiscoveryCache', function (): void {
             file_put_contents(
                 $path,
                 "<?php return ['version' => $version, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => [['commandClass' => 'App\\\\Cmd', 'name' => 'cmd', 'description' => '', 'aliases' => 'not-array']]];",
+            );
+            expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class);
+
+            // Command flags missing (cache written before flags existed)
+            file_put_contents(
+                $path,
+                "<?php return ['version' => $version, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => [['commandClass' => 'App\\\\Cmd', 'name' => 'cmd', 'description' => '', 'aliases' => []]]];",
             );
             expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class);
 

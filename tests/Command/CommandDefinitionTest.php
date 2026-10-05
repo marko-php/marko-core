@@ -53,6 +53,25 @@ it('defaults aliases to empty array in CommandDefinition when not provided', fun
     expect($definition->aliases)->toBeEmpty();
 });
 
+it('stores declared flags in CommandDefinition', function (): void {
+    $definition = new CommandDefinition(
+        commandClass: 'App\Command\TestCommand',
+        name: 'queue:retry',
+        flags: ['all'],
+    );
+
+    expect($definition->flags)->toBe(['all']);
+});
+
+it('defaults command flags to an empty list', function (): void {
+    $definition = new CommandDefinition(
+        commandClass: 'App\Command\TestCommand',
+        name: 'test:command',
+    );
+
+    expect($definition->flags)->toBe([]);
+});
+
 it('marks CommandDefinition as readonly', function (): void {
     $reflection = new ReflectionClass(CommandDefinition::class);
 

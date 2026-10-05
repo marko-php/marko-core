@@ -17,23 +17,23 @@ it('returns command name as first argument', function (): void {
     expect($input->getCommand())->toBe('route:list');
 });
 
-it('returns remaining arguments after command name', function (): void {
-    $input = new Input(['marko', 'route:list', '--verbose', 'extra']);
+it('returns positional arguments after command name without option tokens', function (): void {
+    $input = new Input(['marko', 'route:list', 'extra', '--verbose']);
 
-    expect($input->getArguments())->toBe(['--verbose', 'extra']);
+    expect($input->getArguments())->toBe(['extra']);
 });
 
 it('checks if argument exists by index', function (): void {
-    $input = new Input(['marko', 'route:list', '--verbose']);
+    $input = new Input(['marko', 'route:list', 'first', '--verbose']);
 
     expect($input->hasArgument(0))->toBeTrue()
         ->and($input->hasArgument(1))->toBeFalse();
 });
 
 it('returns null for missing argument', function (): void {
-    $input = new Input(['marko', 'route:list', '--verbose']);
+    $input = new Input(['marko', 'route:list', 'first', '--verbose']);
 
-    expect($input->getArgument(0))->toBe('--verbose')
+    expect($input->getArgument(0))->toBe('first')
         ->and($input->getArgument(99))->toBeNull();
 });
 
@@ -155,4 +155,110 @@ it('does not match long options for single-char names', function (): void {
     $input = new Input(['marko', 'dev:up', '--detach']);
 
     expect($input->hasOption('d'))->toBeFalse();
+});
+
+describe('long option values', function (): void {
+    it('returns the value of a long option given as --queue emails', function (): void {
+        $input = new Input(['marko', 'queue:work', '--queue', 'emails']);
+
+        expect($input->hasOption('queue'))->toBeTrue()
+            ->and($input->getOption('queue'))->toBe('emails')
+            ->and($input->getArguments())->toBe([]);
+    });
+
+    it('returns the value of a long option given with an equals sign', function (): void {
+        $input = new Input(['marko', 'queue:work', '--queue=emails']);
+
+        expect($input->getOption('queue'))->toBe('emails');
+    });
+
+    it('returns true for a long option at the end of input', function (): void {
+        $input = new Input(['marko', 'queue:work', '--queue']);
+
+        expect($input->getOption('queue'))->toBe('true');
+    });
+
+    it('returns true for a long option followed by another option', function (): void {
+        $input = new Input(['marko', 'queue:work', '--queue', '--verbose']);
+
+        expect($input->getOption('queue'))->toBe('true')
+            ->and($input->getOption('verbose'))->toBe('true');
+    });
+
+    it('returns the last value and all values for a repeated option', function (): void {
+        $input = new Input(['marko', 'queue:work', '--queue', 'a', '--queue=b', '--queue', 'c']);
+
+        expect($input->getOption('queue'))->toBe('c')
+            ->and($input->getOptionValues('queue'))->toBe(['a', 'b', 'c']);
+    });
+
+    it('returns an empty list of values for a missing option', function (): void {
+        $input = new Input(['marko', 'queue:work']);
+
+        expect($input->getOptionValues('queue'))->toBe([]);
+    });
+
+    it('returns all values for a repeated short option', function (): void {
+        $input = new Input(['marko', 'dev:up', '-p', '8000', '-p=9000']);
+
+        expect($input->getOption('p'))->toBe('9000')
+            ->and($input->getOptionValues('p'))->toBe(['8000', '9000']);
+    });
+
+    it('treats every token after -- as a positional', function (): void {
+        $input = new Input(['marko', 'run', 'first', '--verbose', '--', '--force', '-x', 'last']);
+
+        expect($input->getArguments())->toBe(['first', '--force', '-x', 'last'])
+            ->and($input->hasOption('verbose'))->toBeTrue()
+            ->and($input->hasOption('force'))->toBeFalse()
+            ->and($input->hasOption('x'))->toBeFalse();
+    });
+
+    it('excludes option tokens from positionals in any order when the flag is declared', function (): void {
+        $before = new Input(['marko', 'queue:retry', '--force', '5'], ['force']);
+        $after = new Input(['marko', 'queue:retry', '5', '--force'], ['force']);
+
+        expect($before->getArgument(0))->toBe('5')
+            ->and($before->getOption('force'))->toBe('true')
+            ->and($after->getArgument(0))->toBe('5')
+            ->and($after->getOption('force'))->toBe('true');
+    });
+
+    it('never lets a declared short flag consume the next token', function (): void {
+        $input = new Input(['marko', 'dev:up', '-d', 'extra'], ['d']);
+
+        expect($input->getOption('d'))->toBe('true')
+            ->and($input->getArguments())->toBe(['extra']);
+    });
+
+    it('lets an undeclared bare long option consume the following non-dash token', function (): void {
+        $input = new Input(['marko', 'queue:retry', '--force', '5']);
+
+        expect($input->getOption('force'))->toBe('5')
+            ->and($input->getArguments())->toBe([]);
+    });
+
+    it('lets an undeclared short option consume the following non-dash token', function (): void {
+        $input = new Input(['marko', 'dev:up', '-p', '8000', 'extra']);
+
+        expect($input->getOption('p'))->toBe('8000')
+            ->and($input->getArguments())->toBe(['extra']);
+    });
+
+    it('treats a single dash as a positional', function (): void {
+        $input = new Input(['marko', 'import', '-']);
+
+        expect($input->getArguments())->toBe(['-']);
+    });
+
+    it('applies declared flags through withFlags without mutating the original input', function (): void {
+        $original = new Input(['marko', 'queue:retry', '--force', '5']);
+        $flagged = $original->withFlags(['force']);
+
+        expect($flagged->getArgument(0))->toBe('5')
+            ->and($flagged->getOption('force'))->toBe('true')
+            ->and($flagged->getCommand())->toBe('queue:retry')
+            ->and($original->getOption('force'))->toBe('5')
+            ->and($original->getArgument(0))->toBeNull();
+    });
 });

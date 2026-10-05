@@ -11,10 +11,12 @@ readonly class Command
 {
     /**
      * @param list<string> $aliases
+     * @param list<string> $flags Value-less options (e.g. `force`, `d`) that never consume the next token
      */
     public function __construct(
         public string $name,
         public string $description = '',
         public array $aliases = [],
+        public array $flags = [],
     ) {}
 }

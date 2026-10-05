@@ -69,6 +69,18 @@ it('defaults aliases to empty array when not provided', function (): void {
     expect($command->aliases)->toBeEmpty();
 });
 
+it('accepts flags parameter in Command attribute', function (): void {
+    $command = new Command(name: 'queue:retry', flags: ['all', 'force']);
+
+    expect($command->flags)->toBe(['all', 'force']);
+});
+
+it('defaults flags to an empty list when not provided', function (): void {
+    $command = new Command(name: 'test:cmd');
+
+    expect($command->flags)->toBe([]);
+});
+
 it('preserves existing Command attribute behavior without aliases', function (): void {
     $reflection = new ReflectionClass(TestCommand::class);
     $attributes = $reflection->getAttributes(Command::class);

@@ -34,6 +34,10 @@ class CommandRunner
         /** @var CommandInterface $command */
         $command = $this->container->get($definition->commandClass);
 
+        if ($definition->flags !== []) {
+            $input = $input->withFlags($definition->flags);
+        }
+
         return $command->execute($input, $output);
     }
 }

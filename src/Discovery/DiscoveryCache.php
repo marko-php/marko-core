@@ -13,7 +13,7 @@ use Marko\Core\Plugin\PluginDefinition;
 
 class DiscoveryCache
 {
-    public const int CACHE_VERSION = 1;
+    public const int CACHE_VERSION = 2;
 
     public function __construct(
         private readonly ProjectPaths $projectPaths,
@@ -120,6 +120,7 @@ class DiscoveryCache
                     'name' => $d->name,
                     'description' => $d->description,
                     'aliases' => $d->aliases,
+                    'flags' => $d->flags,
                 ],
                 $payload['commands'],
             ),
@@ -307,12 +308,14 @@ class DiscoveryCache
             $this->assertStringField($path, $record, 'commands', $i, 'name');
             $this->assertStringField($path, $record, 'commands', $i, 'description');
             $this->assertArrayField($path, $record, 'commands', $i, 'aliases');
+            $this->assertArrayField($path, $record, 'commands', $i, 'flags');
 
             $result[] = new CommandDefinition(
                 commandClass: $record['commandClass'],
                 name: $record['name'],
                 description: $record['description'],
                 aliases: $record['aliases'],
+                flags: $record['flags'],
             );
         }
 

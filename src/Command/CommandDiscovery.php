@@ -89,6 +89,7 @@ readonly class CommandDiscovery
                 name: $attribute->name,
                 description: $attribute->description,
                 aliases: $attribute->aliases,
+                flags: $attribute->flags,
             );
         }
 
