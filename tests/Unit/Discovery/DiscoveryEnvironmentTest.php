@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Marko\Core\Discovery\DiscoveryEnvironment;
+use Marko\Core\Environment\AppEnvironment;
 
 describe('DiscoveryEnvironment', function (): void {
     beforeEach(function (): void {
@@ -109,6 +110,42 @@ describe('DiscoveryEnvironment', function (): void {
         expect($env->enabled())->toBeFalse()
             ->and($env->environment())->toBe('testing')
             ->and($env->cachePath())->toBe('/tmp/discovery.php');
+    });
+
+    it('reads APP_ENV from getenv when $_ENV lacks it', function (): void {
+        unset($_ENV['APP_ENV'], $_ENV['MARKO_ENV']);
+        putenv('APP_ENV=local');
+
+        try {
+            expect((new DiscoveryEnvironment())->environment())->toBe('local');
+        } finally {
+            putenv('APP_ENV');
+        }
+    });
+
+    it(
+        'reads DISCOVERY_CACHE_ENABLED and DISCOVERY_CACHE_PATH from getenv when $_ENV lacks them',
+        function (): void {
+            unset($_ENV['DISCOVERY_CACHE_ENABLED'], $_ENV['DISCOVERY_CACHE_PATH']);
+            putenv('DISCOVERY_CACHE_ENABLED=off');
+            putenv('DISCOVERY_CACHE_PATH=/var/cache/from-getenv.php');
+
+            try {
+                $env = new DiscoveryEnvironment();
+
+                expect($env->enabled())->toBeFalse()
+                    ->and($env->cachePath())->toBe('/var/cache/from-getenv.php');
+            } finally {
+                putenv('DISCOVERY_CACHE_ENABLED');
+                putenv('DISCOVERY_CACHE_PATH');
+            }
+        },
+    );
+
+    it('delegates environment() to the injected AppEnvironment', function (): void {
+        $env = new DiscoveryEnvironment(new AppEnvironment(['MARKO_ENV' => 'dev', 'APP_ENV' => 'production']));
+
+        expect($env->environment())->toBe('dev');
     });
 
     it(

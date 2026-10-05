@@ -17,6 +17,7 @@ use Marko\Core\Container\PreferenceRegistry;
 use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryEnvironment;
+use Marko\Core\Environment\AppEnvironment;
 use Marko\Core\Event\EventDispatcher;
 use Marko\Core\Event\EventDispatcherInterface;
 use Marko\Core\Event\ObserverDefinition;
@@ -162,11 +163,15 @@ class Application
             $bindingRegistry->registerModule($module);
         }
 
+        // One shared answer to "which environment is this?" for the whole application
+        $appEnvironment = new AppEnvironment();
+        $this->container->instance(AppEnvironment::class, $appEnvironment);
+
         // Determine whether to hydrate from cache or run live scans.
-        // The gate reads DiscoveryEnvironment (which reads $_ENV directly) — no marko/config dependency.
-        $env = new DiscoveryEnvironment();
+        // The gate reads DiscoveryEnvironment ($_ENV with getenv() fallback) — no marko/config dependency.
+        $env = new DiscoveryEnvironment($appEnvironment);
         $cache = new DiscoveryCache($projectPaths, $env);
-        $useCache = $env->enabled() && $env->environment() !== 'development' && $cache->exists();
+        $useCache = $env->enabled() && !$appEnvironment->isDevelopment() && $cache->exists();
 
         // Load cache payload once (shared across all four subsystem forks).
         // A corrupt cache throws DiscoveryCacheException loudly — no silent fallback.
