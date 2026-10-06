@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Marko\Core\Discovery\DiscoveryEnvironment;
 use Marko\Core\Environment\AppEnvironment;
+use Marko\Core\Exceptions\DiscoveryCacheException;
 
 describe('DiscoveryEnvironment', function (): void {
     beforeEach(function (): void {
@@ -56,14 +57,46 @@ describe('DiscoveryEnvironment', function (): void {
     );
 
     it(
-        'returns enabled() true for any other present DISCOVERY_CACHE_ENABLED value (e.g. "1", "true", "yes")',
+        'returns enabled() true for the DISCOVERY_CACHE_ENABLED values 1, true, yes and on (case-insensitive)',
         function (): void {
             $env = new DiscoveryEnvironment();
 
-            foreach (['1', 'true', 'TRUE', 'True', 'yes', 'YES', 'Yes', 'on', 'ON', 'enabled'] as $truthy) {
+            foreach (['1', 'true', 'TRUE', 'True', 'yes', 'YES', 'Yes', 'on', 'ON', ' on '] as $truthy) {
                 $_ENV['DISCOVERY_CACHE_ENABLED'] = $truthy;
                 expect($env->enabled())->toBeTrue();
             }
+        },
+    );
+
+    it(
+        'throws DiscoveryCacheException for an unrecognised DISCOVERY_CACHE_ENABLED value instead of guessing',
+        function (string $value): void {
+            $_ENV['DISCOVERY_CACHE_ENABLED'] = $value;
+
+            expect(fn (): bool => (new DiscoveryEnvironment())->enabled())
+                ->toThrow(
+                    DiscoveryCacheException::class,
+                    'Environment variable "DISCOVERY_CACHE_ENABLED" must be a boolean',
+                );
+        },
+    )->with(['enabled', 'ture', '2']);
+
+    it(
+        'builds the shipped config/discovery.php from DiscoveryEnvironment so config mirrors the boot gate',
+        function (): void {
+            $_ENV['DISCOVERY_CACHE_ENABLED'] = 'off';
+            $_ENV['APP_ENV'] = 'Staging';
+            $_ENV['DISCOVERY_CACHE_PATH'] = '/var/cache/discovery.php';
+
+            $config = require dirname(__DIR__, 3) . '/config/discovery.php';
+            $env = new DiscoveryEnvironment();
+
+            expect($config)->toBe([
+                'enabled' => $env->enabled(),
+                'environment' => $env->environment(),
+                'cache_path' => $env->cachePath(),
+            ])->and($config['enabled'])->toBeFalse()
+                ->and($config['environment'])->toBe('staging');
         },
     );
 

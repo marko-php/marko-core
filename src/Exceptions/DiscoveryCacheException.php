@@ -8,6 +8,16 @@ use Marko\Core\Discovery\DiscoveryCacheContributorInterface;
 
 class DiscoveryCacheException extends MarkoException
 {
+    public static function invalidEnabledValue(
+        string $value,
+    ): self {
+        return new self(
+            message: 'Environment variable "DISCOVERY_CACHE_ENABLED" must be a boolean',
+            context: sprintf('Got "%s" while deciding whether boot may use the discovery cache', $value),
+            suggestion: 'Set DISCOVERY_CACHE_ENABLED to one of: true, false, 1, 0, yes, no, on, off (case-insensitive). Leave it empty to disable the cache, or remove it to enable the cache.',
+        );
+    }
+
     public static function unreadable(
         string $path,
     ): self {

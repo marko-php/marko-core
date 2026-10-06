@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Marko\Core\Discovery;
 
 use Marko\Core\Environment\AppEnvironment;
+use Marko\Core\Exceptions\DiscoveryCacheException;
 
 /**
  * Boot-time reader for the discovery cache settings.
@@ -14,12 +15,18 @@ use Marko\Core\Environment\AppEnvironment;
  */
 class DiscoveryEnvironment
 {
+    private const array TRUE_VALUES = ['1', 'true', 'yes', 'on'];
+
+    /** An empty value disables the cache, as documented for DISCOVERY_CACHE_ENABLED. */
     private const array FALSE_VALUES = ['0', 'false', 'no', 'off', ''];
 
     public function __construct(
         private readonly AppEnvironment $appEnvironment = new AppEnvironment(),
     ) {}
 
+    /**
+     * @throws DiscoveryCacheException
+     */
     public function enabled(): bool
     {
         $value = $this->read('DISCOVERY_CACHE_ENABLED');
@@ -28,7 +35,17 @@ class DiscoveryEnvironment
             return true;
         }
 
-        return !in_array(strtolower($value), self::FALSE_VALUES, strict: true);
+        $token = strtolower(trim($value));
+
+        if (in_array($token, self::TRUE_VALUES, strict: true)) {
+            return true;
+        }
+
+        if (in_array($token, self::FALSE_VALUES, strict: true)) {
+            return false;
+        }
+
+        throw DiscoveryCacheException::invalidEnabledValue($value);
     }
 
     public function environment(): string

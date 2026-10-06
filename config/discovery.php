@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-$falseValues = ['0', 'false', 'no', 'off', ''];
-$rawEnabled = $_ENV['DISCOVERY_CACHE_ENABLED'] ?? null;
+use Marko\Core\Discovery\DiscoveryEnvironment;
+
+// Mirrors the boot gate. DiscoveryEnvironment is the single parser for these variables
+// (marko/core cannot depend on marko/config), so an invalid value fails here as it does at boot.
+$discoveryEnvironment = new DiscoveryEnvironment();
 
 return [
-    'enabled' => $rawEnabled === null
-        ? true
-        : !in_array(strtolower((string) $rawEnabled), $falseValues, strict: true),
-    'environment' => $_ENV['APP_ENV'] ?? 'production',
-    'cache_path' => $_ENV['DISCOVERY_CACHE_PATH'] ?? 'storage/cache/discovery.php',
+    'enabled' => $discoveryEnvironment->enabled(),
+    'environment' => $discoveryEnvironment->environment(),
+    'cache_path' => $discoveryEnvironment->cachePath(),
 ];
