@@ -19,5 +19,6 @@ readonly class CommandDefinition
         public string $description = '',
         public array $aliases = [],
         public array $flags = [],
+        public bool $destructive = false,
     ) {}
 }

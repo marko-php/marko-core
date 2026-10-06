@@ -175,7 +175,10 @@ describe('DiscoveryCache modules, middleware, sections and staleness', function 
             "<?php return ['version' => 2, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => []];",
         );
 
-        expect(fn () => $this->cache->load())->toThrow(DiscoveryCacheException::class, 'found 2, expected 3');
+        expect(fn () => $this->cache->load())->toThrow(
+            DiscoveryCacheException::class,
+            'found 2, expected ' . DiscoveryCache::CACHE_VERSION,
+        );
     });
 
     it('throws malformed when a module record or section is invalid', function (): void {

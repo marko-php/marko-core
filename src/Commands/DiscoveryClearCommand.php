@@ -11,7 +11,7 @@ use Marko\Core\Command\Output;
 use Marko\Core\Discovery\DiscoveryCache;
 
 /** @noinspection PhpUnused */
-#[Command(name: 'discovery:clear', description: 'Remove the discovery cache')]
+#[Command(name: 'discovery:clear', description: 'Remove the discovery cache', destructive: true)]
 readonly class DiscoveryClearCommand implements CommandInterface
 {
     public function __construct(

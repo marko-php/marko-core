@@ -72,6 +72,25 @@ it('defaults command flags to an empty list', function (): void {
     expect($definition->flags)->toBe([]);
 });
 
+it('stores the destructive marker in CommandDefinition', function (): void {
+    $definition = new CommandDefinition(
+        commandClass: 'App\Command\TestCommand',
+        name: 'cache:clear',
+        destructive: true,
+    );
+
+    expect($definition->destructive)->toBeTrue();
+});
+
+it('defaults the destructive marker to false', function (): void {
+    $definition = new CommandDefinition(
+        commandClass: 'App\Command\TestCommand',
+        name: 'test:command',
+    );
+
+    expect($definition->destructive)->toBeFalse();
+});
+
 it('marks CommandDefinition as readonly', function (): void {
     $reflection = new ReflectionClass(CommandDefinition::class);
 

@@ -432,6 +432,83 @@ PHP;
     rmdir($tempDir);
 });
 
+it('discovers the destructive marker from the Command attribute', function (): void {
+    $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
+    mkdir($tempDir . '/src', 0755, true);
+
+    $destructiveCode = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace TestCommandModuleDestructive1;
+
+use Marko\Core\Attributes\Command;
+use Marko\Core\Command\CommandInterface;
+use Marko\Core\Command\Input;
+use Marko\Core\Command\Output;
+
+#[Command(name: 'app:wipe', description: 'Wipes state', destructive: true)]
+class WipeCommand implements CommandInterface
+{
+    public function execute(
+        Input $input,
+        Output $output,
+    ): int {
+        return 0;
+    }
+}
+PHP;
+    $safeCode = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace TestCommandModuleDestructive1;
+
+use Marko\Core\Attributes\Command;
+use Marko\Core\Command\CommandInterface;
+use Marko\Core\Command\Input;
+use Marko\Core\Command\Output;
+
+#[Command(name: 'app:status', description: 'Reads state')]
+class StatusCommand implements CommandInterface
+{
+    public function execute(
+        Input $input,
+        Output $output,
+    ): int {
+        return 0;
+    }
+}
+PHP;
+    file_put_contents($tempDir . '/src/WipeCommand.php', $destructiveCode);
+    file_put_contents($tempDir . '/src/StatusCommand.php', $safeCode);
+
+    $manifest = new ModuleManifest(
+        name: 'test/module',
+        version: '1.0.0',
+        path: $tempDir,
+    );
+
+    $discovery = new CommandDiscovery(new ClassFileParser());
+    $byName = [];
+
+    foreach ($discovery->discover([$manifest]) as $definition) {
+        $byName[$definition->name] = $definition;
+    }
+
+    expect($byName)->toHaveCount(2)
+        ->and($byName['app:wipe']->destructive)->toBeTrue()
+        ->and($byName['app:status']->destructive)->toBeFalse();
+
+    // Cleanup
+    unlink($tempDir . '/src/WipeCommand.php');
+    unlink($tempDir . '/src/StatusCommand.php');
+    rmdir($tempDir . '/src');
+    rmdir($tempDir);
+});
+
 it('creates CommandDefinition with empty aliases when none specified', function (): void {
     $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
     mkdir($tempDir . '/src', 0755, true);

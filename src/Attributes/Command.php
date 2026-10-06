@@ -12,11 +12,15 @@ readonly class Command
     /**
      * @param list<string> $aliases
      * @param list<string> $flags Value-less options (e.g. `force`, `d`) that never consume the next token
+     * @param bool $destructive The command changes or deletes stored state (database rows, cache entries, queued
+     *                          jobs, log files...). Callers that run commands on someone else's behalf, such as the
+     *                          MCP run_console_command tool, refuse destructive commands unless explicitly allowed
      */
     public function __construct(
         public string $name,
         public string $description = '',
         public array $aliases = [],
         public array $flags = [],
+        public bool $destructive = false,
     ) {}
 }

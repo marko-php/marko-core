@@ -81,6 +81,18 @@ it('defaults flags to an empty list when not provided', function (): void {
     expect($command->flags)->toBe([]);
 });
 
+it('accepts the destructive marker in Command attribute', function (): void {
+    $command = new Command(name: 'cache:clear', destructive: true);
+
+    expect($command->destructive)->toBeTrue();
+});
+
+it('defaults destructive to false when not provided', function (): void {
+    $command = new Command(name: 'test:cmd');
+
+    expect($command->destructive)->toBeFalse();
+});
+
 it('preserves existing Command attribute behavior without aliases', function (): void {
     $reflection = new ReflectionClass(TestCommand::class);
     $attributes = $reflection->getAttributes(Command::class);

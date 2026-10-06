@@ -72,6 +72,7 @@ function samplePayload(): array
                 description: 'Clears the cache',
                 aliases: ['cc'],
                 flags: ['force'],
+                destructive: true,
             ),
         ],
     ];
@@ -194,7 +195,8 @@ describe('DiscoveryCache', function (): void {
                 ->and($loaded['commands'][0]->name)->toBe('cache:clear')
                 ->and($loaded['commands'][0]->description)->toBe('Clears the cache')
                 ->and($loaded['commands'][0]->aliases)->toBe(['cc'])
-                ->and($loaded['commands'][0]->flags)->toBe(['force']);
+                ->and($loaded['commands'][0]->flags)->toBe(['force'])
+                ->and($loaded['commands'][0]->destructive)->toBeTrue();
         },
     );
 
@@ -364,6 +366,20 @@ describe('DiscoveryCache', function (): void {
             file_put_contents(
                 $path,
                 "<?php return ['version' => $version, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => [['commandClass' => 'App\\\\Cmd', 'name' => 'cmd', 'description' => '', 'aliases' => []]]];",
+            );
+            expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class);
+
+            // Command destructive missing (cache written before the destructive marker existed)
+            file_put_contents(
+                $path,
+                "<?php return ['version' => $version, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => [['commandClass' => 'App\\\\Cmd', 'name' => 'cmd', 'description' => '', 'aliases' => [], 'flags' => []]]];",
+            );
+            expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class);
+
+            // Command destructive as string instead of bool
+            file_put_contents(
+                $path,
+                "<?php return ['version' => $version, 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => [['commandClass' => 'App\\\\Cmd', 'name' => 'cmd', 'description' => '', 'aliases' => [], 'flags' => [], 'destructive' => 'yes']]];",
             );
             expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class);
 
