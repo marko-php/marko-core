@@ -21,6 +21,9 @@ class AppEnvironment
     /** @var list<string> */
     public const array DEVELOPMENT_NAMES = ['development', 'dev', 'local'];
 
+    /** @var list<string> */
+    public const array TESTING_NAMES = ['testing', 'test'];
+
     private const array VARIABLE_NAMES = ['MARKO_ENV', 'APP_ENV'];
 
     /**
@@ -54,6 +57,11 @@ class AppEnvironment
     public function isDevelopment(): bool
     {
         return in_array($this->name(), self::DEVELOPMENT_NAMES, true);
+    }
+
+    public function isTesting(): bool
+    {
+        return in_array($this->name(), self::TESTING_NAMES, true);
     }
 
     private function read(

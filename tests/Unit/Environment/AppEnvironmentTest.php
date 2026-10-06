@@ -72,6 +72,22 @@ describe('AppEnvironment', function (): void {
             ->and($environment->isDevelopment())->toBeFalse();
     });
 
+    it('treats testing and test as testing case-insensitively', function (string $value): void {
+        $environment = new AppEnvironment(['APP_ENV' => $value]);
+
+        expect($environment->isTesting())->toBeTrue()
+            ->and($environment->isProduction())->toBeFalse()
+            ->and($environment->isDevelopment())->toBeFalse();
+    })->with(['testing', 'test', 'TESTING', 'Test']);
+
+    it('does not treat production, development or staging names as testing', function (string $value): void {
+        expect((new AppEnvironment(['APP_ENV' => $value]))->isTesting())->toBeFalse();
+    })->with(['production', 'prod', 'development', 'dev', 'local', 'staging', 'tests']);
+
+    it('does not treat an unset environment as testing', function (): void {
+        expect((new AppEnvironment([]))->isTesting())->toBeFalse();
+    });
+
     it('prefers MARKO_ENV over APP_ENV', function (): void {
         $environment = new AppEnvironment(['MARKO_ENV' => 'local', 'APP_ENV' => 'production']);
 
