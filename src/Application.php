@@ -21,6 +21,7 @@ use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryEnvironment;
 use Marko\Core\Environment\AppEnvironment;
+use Marko\Core\Event\ApplicationBooted;
 use Marko\Core\Event\EventDispatcher;
 use Marko\Core\Event\EventDispatcherInterface;
 use Marko\Core\Event\ObserverDefinition;
@@ -251,6 +252,9 @@ class Application
                 $this->container->call($module->boot);
             }
         }
+
+        // Observers that check what any module's boot callback set up run once everything has booted.
+        $this->eventDispatcher->dispatch(new ApplicationBooted());
     }
 
     /**
