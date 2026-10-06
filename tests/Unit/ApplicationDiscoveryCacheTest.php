@@ -698,6 +698,9 @@ it(
 
             expect(fn () => $app->initialize())->toThrow(DiscoveryCacheException::class);
 
+            // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+            $app->bootstrapErrorHandler->unregister();
+
             cacheTestCleanupDirectory($baseDir);
         } finally {
             $restore();
