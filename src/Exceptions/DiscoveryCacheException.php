@@ -28,6 +28,17 @@ class DiscoveryCacheException extends MarkoException
         );
     }
 
+    public static function untrusted(
+        string $path,
+        string $reason,
+    ): self {
+        return new self(
+            message: "Refusing to load the discovery cache: '$path' is not trusted because $reason",
+            context: 'While checking the discovery cache before including it as PHP code',
+            suggestion: "Keep the discovery cache in a directory only the application user can write to (the default storage/cache/), never a shared one such as /tmp. Fix the ownership and permissions of '$path' (e.g. chmod o-w), or delete it and run `marko discovery:cache` as the user that runs the application",
+        );
+    }
+
     public static function malformed(
         string $path,
         string $reason,

@@ -171,7 +171,7 @@ class DiscoveryCache
             true,
         ) . ";\n";
 
-        $tmp = $dir . '/.discovery_cache_' . uniqid('', true) . '.tmp';
+        $tmp = $this->tempPath($dir);
 
         if (ErrorCapture::run($reason, fn (): int|false => file_put_contents($tmp, $content)) === false) {
             throw DiscoveryCacheException::notWritable($path, $reason);
@@ -186,6 +186,10 @@ class DiscoveryCache
 
     /**
      * Loads and hydrates the cache file into typed value objects.
+     *
+     * The file is executable PHP, so before including it the file and its
+     * directory must not be world-writable and must be owned by the user
+     * running PHP (or root). Otherwise another local user could plant code.
      *
      * Checks, in order: the file returns an array, its version matches, every
      * section is well-formed, and its fingerprint matches the current project
@@ -202,6 +206,9 @@ class DiscoveryCache
         if (!file_exists($path)) {
             throw DiscoveryCacheException::unreadable($path);
         }
+
+        $this->assertTrusted($path);
+        $this->assertTrusted(dirname($path));
 
         /** @var mixed $data */
         $data = include $path;
@@ -242,6 +249,76 @@ class DiscoveryCache
         }
 
         return $loaded;
+    }
+
+    /**
+     * Returns an unguessable temp file name in the cache directory, so another
+     * local user cannot pre-create it (or a symlink at it) before the write.
+     */
+    protected function tempPath(
+        string $dir,
+    ): string {
+        return $dir . '/.discovery_cache_' . bin2hex(random_bytes(8)) . '.tmp';
+    }
+
+    /**
+     * Returns the effective uid of the running process, or null where it
+     * cannot be determined (Windows, or the posix extension is missing), in
+     * which case the ownership check is skipped.
+     */
+    protected function currentUid(): ?int
+    {
+        if (PHP_OS_FAMILY === 'Windows' || !function_exists('posix_geteuid')) {
+            return null;
+        }
+
+        return posix_geteuid();
+    }
+
+    /**
+     * Refuses a cache file or directory that someone other than the running
+     * user could have written to.
+     *
+     * @throws DiscoveryCacheException
+     */
+    private function assertTrusted(
+        string $target,
+    ): void {
+        clearstatcache(true, $target);
+        $perms = ErrorCapture::run($reason, fn (): int|false => fileperms($target));
+
+        if ($perms === false) {
+            throw DiscoveryCacheException::untrusted(
+                $target,
+                'its permissions could not be read' . ($reason !== null ? ": $reason" : ''),
+            );
+        }
+
+        if (($perms & 0002) !== 0) {
+            throw DiscoveryCacheException::untrusted($target, 'it is world-writable');
+        }
+
+        $uid = $this->currentUid();
+
+        if ($uid === null) {
+            return;
+        }
+
+        $owner = ErrorCapture::run($reason, fn (): int|false => fileowner($target));
+
+        if ($owner === false) {
+            throw DiscoveryCacheException::untrusted(
+                $target,
+                'its owner could not be read' . ($reason !== null ? ": $reason" : ''),
+            );
+        }
+
+        if ($owner !== $uid && $owner !== 0) {
+            throw DiscoveryCacheException::untrusted(
+                $target,
+                "it is owned by uid $owner, not by uid $uid running PHP (or root)",
+            );
+        }
     }
 
     /**

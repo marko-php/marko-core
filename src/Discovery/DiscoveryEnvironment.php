@@ -53,6 +53,11 @@ class DiscoveryEnvironment
         return $this->appEnvironment->name();
     }
 
+    /**
+     * The cache file is included as PHP, so it must live in a directory only
+     * the application user can write to; DiscoveryCache refuses to load it
+     * from a world-writable or foreign-owned location.
+     */
     public function cachePath(): string
     {
         return $this->read('DISCOVERY_CACHE_PATH') ?? 'storage/cache/discovery.php';

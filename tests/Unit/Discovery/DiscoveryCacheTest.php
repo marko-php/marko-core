@@ -500,4 +500,101 @@ describe('DiscoveryCache', function (): void {
         expect($exception)->not->toBeNull()
             ->and($exception->getContext())->not->toContain('stale_marker_');
     });
+
+    it('names temp files with 16 random hex characters instead of a time-based uniqid()', function (): void {
+        $cache = new class (new ProjectPaths($this->tmpDir), new DiscoveryEnvironment()) extends DiscoveryCache
+        {
+            public function exposeTempPath(
+                string $dir,
+            ): string {
+                return $this->tempPath($dir);
+            }
+        };
+
+        $first = $cache->exposeTempPath('/cache');
+        $second = $cache->exposeTempPath('/cache');
+
+        expect($first)->toMatch('#^/cache/\.discovery_cache_[0-9a-f]{16}\.tmp$#')
+            ->and($second)->toMatch('#^/cache/\.discovery_cache_[0-9a-f]{16}\.tmp$#')
+            ->and($first)->not->toBe($second);
+    });
+
+    it('loads a cache file it wrote into a directory only the current user can write to', function (): void {
+        $setup = makeCacheSetup($this->tmpDir);
+        $setup['cache']->write(samplePayload());
+
+        expect($setup['cache']->load()['preferences'])->toHaveCount(1);
+    });
+
+    it('refuses to include a cache file whose directory is world-writable', function (): void {
+        $setup = makeCacheSetup($this->tmpDir);
+        $setup['cache']->write(emptyPayload());
+        $marker = $this->tmpDir . '/included.marker';
+        file_put_contents($setup['path'], "<?php file_put_contents('$marker', 'ran'); return [];");
+        chmod($setup['path'], 0644);
+        chmod($this->tmpDir, 0777);
+
+        try {
+            expect(fn () => $setup['cache']->load())
+                ->toThrow(DiscoveryCacheException::class, 'world-writable')
+                ->and(file_exists($marker))->toBeFalse();
+        } finally {
+            chmod($this->tmpDir, 0755);
+        }
+    });
+
+    it('refuses to include a world-writable cache file', function (): void {
+        $setup = makeCacheSetup($this->tmpDir);
+        $setup['cache']->write(emptyPayload());
+        chmod($setup['path'], 0666);
+
+        expect(fn () => $setup['cache']->load())->toThrow(DiscoveryCacheException::class, 'world-writable');
+    });
+
+    it('refuses to include a cache file owned by a different user than the one running PHP', function (): void {
+        $setup = makeCacheSetup($this->tmpDir);
+        $setup['cache']->write(emptyPayload());
+        $owner = (int) fileowner($setup['path']);
+
+        if ($owner === 0) {
+            $this->markTestSkipped('Root-owned cache files are trusted, so the mismatch cannot be shown as root.');
+        }
+
+        $paths = new ProjectPaths($this->tmpDir);
+        $env = new DiscoveryEnvironment();
+        $foreignUid = $owner + 1;
+
+        $cache = new class ($paths, $env, $foreignUid) extends DiscoveryCache
+        {
+            public function __construct(
+                ProjectPaths $projectPaths,
+                DiscoveryEnvironment $discoveryEnvironment,
+                private readonly int $uid,
+            ) {
+                parent::__construct($projectPaths, $discoveryEnvironment);
+            }
+
+            protected function currentUid(): ?int
+            {
+                return $this->uid;
+            }
+        };
+
+        expect(fn () => $cache->load())->toThrow(DiscoveryCacheException::class, "owned by uid $owner");
+    });
+
+    it('skips the ownership check when the running uid cannot be determined', function (): void {
+        $setup = makeCacheSetup($this->tmpDir);
+        $setup['cache']->write(emptyPayload());
+
+        $cache = new class (new ProjectPaths($this->tmpDir), new DiscoveryEnvironment()) extends DiscoveryCache
+        {
+            protected function currentUid(): ?int
+            {
+                return null;
+            }
+        };
+
+        expect($cache->load()['preferences'])->toBe([]);
+    });
 });
