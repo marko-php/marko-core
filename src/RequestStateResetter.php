@@ -30,13 +30,23 @@ readonly class RequestStateResetter
         private ContainerInterface $container,
     ) {}
 
-    public function reset(): void
-    {
+    /**
+     * @param ResettableInterface ...$except Instances to leave alone, matched by
+     *     identity whatever binding id they were resolved under (the marko/testing
+     *     RefreshDatabase helper keeps its test transaction open this way)
+     */
+    public function reset(
+        ResettableInterface ...$except,
+    ): void {
         /** @var array<string, ResettableInterface> $resettables */
         $resettables = $this->container->resolvedInstances(ResettableInterface::class);
         ksort($resettables);
 
         foreach ($resettables as $resettable) {
+            if (in_array($resettable, $except, true)) {
+                continue;
+            }
+
             $resettable->reset();
         }
     }

@@ -74,4 +74,16 @@ describe('RequestStateResetter', function (): void {
 
         new RequestStateResetter($container)->reset();
     })->throws(RuntimeException::class, 'reset failed');
+    it('skips the instances passed as exceptions', function (): void {
+        $log = [];
+        $container = new Container();
+        $kept = requestStateResetterSpy($log, 'kept');
+        $container->instance('kept', $kept);
+        $container->instance('kept-alias', $kept);
+        $container->instance('other', requestStateResetterSpy($log, 'other'));
+
+        new RequestStateResetter($container)->reset($kept);
+
+        expect($log)->toBe(['other']);
+    });
 });
