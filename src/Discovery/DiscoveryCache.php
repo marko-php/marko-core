@@ -113,8 +113,12 @@ class DiscoveryCache
         $path = $this->resolveCachePath();
         $dir = dirname($path);
 
-        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
-            throw DiscoveryCacheException::notWritable($path);
+        if (!is_dir($dir)) {
+            $reason = null;
+
+            if (!$this->capturing($reason, fn (): bool => mkdir($dir, 0755, true)) && !is_dir($dir)) {
+                throw DiscoveryCacheException::notWritable($path, $reason);
+            }
         }
 
         $data = [
@@ -170,13 +174,44 @@ class DiscoveryCache
 
         $tmp = $dir . '/.discovery_cache_' . uniqid('', true) . '.tmp';
 
-        if (file_put_contents($tmp, $content) === false) {
-            throw DiscoveryCacheException::notWritable($path);
+        $reason = null;
+
+        if ($this->capturing($reason, fn (): int|false => file_put_contents($tmp, $content)) === false) {
+            throw DiscoveryCacheException::notWritable($path, $reason);
         }
 
-        if (!rename($tmp, $path)) {
+        $reason = null;
+
+        if (!$this->capturing($reason, fn (): bool => rename($tmp, $path))) {
             @unlink($tmp);
-            throw DiscoveryCacheException::notWritable($path);
+
+            throw DiscoveryCacheException::notWritable($path, $reason);
+        }
+    }
+
+    /**
+     * Runs a filesystem call, capturing its PHP warning message instead of emitting it.
+     *
+     * @template T
+     *
+     * @param callable(): T $operation
+     *
+     * @return T
+     */
+    private function capturing(
+        ?string &$reason,
+        callable $operation,
+    ): mixed {
+        set_error_handler(function (int $errno, string $message) use (&$reason): bool {
+            $reason = $message;
+
+            return true;
+        });
+
+        try {
+            return $operation();
+        } finally {
+            restore_error_handler();
         }
     }
 

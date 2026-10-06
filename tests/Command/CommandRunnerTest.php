@@ -158,7 +158,7 @@ it('passes Input to execute method', function (): void {
         description: 'Echo command',
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -197,7 +197,7 @@ it('passes Output to execute method', function (): void {
         description: 'Output command',
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -228,7 +228,7 @@ it('returns exit code from command execute method', function (): void {
         description: 'Exit code command',
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -243,7 +243,7 @@ it('throws CommandException when command not found', function (): void {
     $output = new Output(fopen('php://memory', 'w'));
 
     $registry = new CommandRegistry();
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
 
     $runner = new CommandRunner($container, $registry);
 
@@ -272,7 +272,7 @@ it('returns exit code 0 on successful execution', function (): void {
         description: 'Successful command',
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -303,7 +303,7 @@ it('returns non-zero exit code on command failure', function (): void {
         description: 'Failing command',
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -373,7 +373,7 @@ it('returns correct exit code when invoked via alias', function (): void {
         aliases: ['tc'],
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -412,7 +412,7 @@ it('passes declared flags into the input given to the command', function (): voi
         flags: ['all'],
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 
@@ -457,7 +457,7 @@ it('passes Input and Output when invoked via alias', function (): void {
         aliases: ['tc'],
     ));
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($command);
 

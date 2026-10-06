@@ -37,6 +37,7 @@ readonly class DiscoveryCacheCommand implements CommandInterface
             $this->discoveryCache->write($payload);
         } catch (DiscoveryCacheException $e) {
             $output->writeLine($e->getMessage());
+            $output->writeLine($e->getContext());
             $output->writeLine($e->getSuggestion());
 
             return 1;

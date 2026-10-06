@@ -149,6 +149,13 @@ it(
         $dir = sys_get_temp_dir() . '/marko_cache_cmd_test_' . uniqid('', true);
         // Create a read-only directory so the write will fail
         mkdir($dir, 0555, true);
+
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0 || is_writable($dir)) {
+            chmod($dir, 0755);
+            discoveryCacheTestCleanup($dir);
+            $this->markTestSkipped('Directory permissions are not enforced for this user (e.g. root).');
+        }
+
         $cachePath = $dir . '/discovery.php';
         $_ENV['DISCOVERY_CACHE_PATH'] = $cachePath;
         $paths = new ProjectPaths($dir);
@@ -167,17 +174,19 @@ it(
         $input = new Input([]);
         $output = new Output($stream);
 
-        $exitCode = $command->execute($input, $output);
+        try {
+            $exitCode = $command->execute($input, $output);
 
-        rewind($stream);
-        $result = stream_get_contents($stream);
+            rewind($stream);
+            $result = stream_get_contents($stream);
 
-        expect($exitCode)->not->toBe(0)
-            ->and($result)->not->toBeEmpty();
-
-        fclose($stream);
-        chmod($dir, 0755);
-        discoveryCacheTestCleanup($dir);
+            expect($exitCode)->not->toBe(0)
+                ->and($result)->toMatch('/Permission denied|Failed to open stream/i');
+        } finally {
+            fclose($stream);
+            chmod($dir, 0755);
+            discoveryCacheTestCleanup($dir);
+        }
     },
 );
 

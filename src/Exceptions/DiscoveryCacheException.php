@@ -122,10 +122,17 @@ class DiscoveryCacheException extends MarkoException
 
     public static function notWritable(
         string $path,
+        ?string $reason = null,
     ): self {
+        $context = "While writing the discovery cache to '$path'";
+
+        if ($reason !== null) {
+            $context .= ": $reason";
+        }
+
         return new self(
             message: "Discovery cache file '$path' could not be written",
-            context: "While writing the discovery cache to '$path'",
+            context: $context,
             suggestion: "Ensure the directory containing '$path' is writable by the web server or CLI user",
         );
     }
