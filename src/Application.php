@@ -8,6 +8,8 @@ use Marko\Core\Command\CommandDefinition;
 use Marko\Core\Command\CommandDiscovery;
 use Marko\Core\Command\CommandRegistry;
 use Marko\Core\Command\CommandRunner;
+use Marko\Core\Command\ConfirmationPrompterInterface;
+use Marko\Core\Command\StdinConfirmationPrompter;
 use Marko\Core\Container\BindingRegistry;
 use Marko\Core\Container\Container;
 use Marko\Core\Container\ContainerInterface;
@@ -184,6 +186,9 @@ class Application
 
         // Register ProjectPaths for dependency injection
         $this->container->instance(ProjectPaths::class, $projectPaths);
+
+        // Core console default, bound before module bindings so a module can replace it
+        $this->container->bind(ConfirmationPrompterInterface::class, StdinConfirmationPrompter::class);
 
         // Register bindings from all modules
         foreach ($this->modules as $module) {

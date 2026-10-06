@@ -8,8 +8,59 @@ use Marko\Core\Command\CommandRegistry;
 use Marko\Core\Command\CommandRunner;
 use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
+use Marko\Core\Container\Container;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Exceptions\CommandException;
+
+it('registers the running command input and output in the container before resolving the command', function (): void {
+    $input = new Input(['marko', 'test:cmd', '--force', '5']);
+    $output = new Output(fopen('php://memory', 'w'));
+
+    $container = new Container();
+
+    $command = new class () implements CommandInterface
+    {
+        public ?Input $executedWith = null;
+
+        public function execute(
+            Input $input,
+            Output $output,
+        ): int {
+            $this->executedWith = $input;
+
+            return 0;
+        }
+    };
+
+    $registry = new CommandRegistry();
+    $registry->register(new CommandDefinition(
+        commandClass: $command::class,
+        name: 'test:cmd',
+        description: 'A test command',
+        flags: ['force'],
+    ));
+
+    // The command class is bound to a closure that reads the container at resolution time
+    $resolvedWith = null;
+    $container->bind(
+        $command::class,
+        function () use ($container, $command, &$resolvedWith): CommandInterface {
+            $resolvedWith = $container->get(Input::class);
+
+            return $command;
+        },
+    );
+
+    $runner = new CommandRunner($container, $registry);
+    $runner->run('test:cmd', $input, $output);
+
+    $registeredInput = $container->get(Input::class);
+
+    expect($resolvedWith)->toBe($registeredInput)
+        ->and($command->executedWith)->toBe($registeredInput)
+        ->and($registeredInput->getArgument(0))->toBe('5')
+        ->and($container->get(Output::class))->toBe($output);
+});
 
 it('executes command by name', function (): void {
     $input = new Input(['marko', 'test:greet']);

@@ -262,3 +262,30 @@ describe('long option values', function (): void {
             ->and($original->getArgument(0))->toBeNull();
     });
 });
+
+describe('interactivity', function (): void {
+    it('reports interactive when --no-interaction is not passed', function (): void {
+        $input = new Input(['marko', 'db:migrate']);
+
+        expect($input->isInteractive())->toBeTrue();
+    });
+
+    it('reports non-interactive when --no-interaction is passed', function (): void {
+        $input = new Input(['marko', 'db:migrate', '--no-interaction']);
+
+        expect($input->isInteractive())->toBeFalse();
+    });
+
+    it(
+        'declares no-interaction as a flag for every command so it never consumes the next argument',
+        function (): void {
+            $input = new Input(['marko', 'queue:retry', '--no-interaction', '5']);
+            $flagged = $input->withFlags(['force']);
+
+            expect($input->getArgument(0))->toBe('5')
+                ->and($input->isInteractive())->toBeFalse()
+                ->and($flagged->getArgument(0))->toBe('5')
+                ->and($flagged->isInteractive())->toBeFalse();
+        },
+    );
+});

@@ -18,10 +18,20 @@ namespace Marko\Core\Command;
  *   `getOptionValues()` returns them all.
  *
  * Single-character names refer to short options (`-d`), longer names to long options (`--detach`).
+ *
+ * `--no-interaction` is a global flag: every command accepts it, it never takes a value,
+ * and it makes isInteractive() false so nothing asks the person running the command a question.
  */
 readonly class Input
 {
     private const string OPTION_TERMINATOR = '--';
+
+    /**
+     * Flags every command accepts, whether or not it declares them.
+     */
+    public const array GLOBAL_FLAGS = [self::NO_INTERACTION];
+
+    public const string NO_INTERACTION = 'no-interaction';
 
     /**
      * @var list<string>
@@ -185,9 +195,22 @@ readonly class Input
         return str_starts_with($token, '-') && $token !== '-';
     }
 
+    /**
+     * Whether a person may be asked questions: false when --no-interaction was passed.
+     *
+     * Whether a terminal is attached is a separate question, answered by the confirmation prompter.
+     */
+    public function isInteractive(): bool
+    {
+        return !$this->hasOption(self::NO_INTERACTION);
+    }
+
     private function isFlag(
         string $token,
     ): bool {
-        return array_any($this->flags, fn (string $flag): bool => $this->optionKey($flag) === $token);
+        return array_any(
+            [...self::GLOBAL_FLAGS, ...$this->flags],
+            fn (string $flag): bool => $this->optionKey($flag) === $token,
+        );
     }
 }

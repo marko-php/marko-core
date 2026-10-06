@@ -5,8 +5,10 @@ declare(strict_types=1);
 use Marko\Core\Application;
 use Marko\Core\Command\CommandRegistry;
 use Marko\Core\Command\CommandRunner;
+use Marko\Core\Command\ConfirmationPrompterInterface;
 use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
+use Marko\Core\Command\StdinConfirmationPrompter;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Event\EventDispatcherInterface;
 use Marko\Core\Exceptions\CircularDependencyException;
@@ -1511,6 +1513,71 @@ it('registers the container as an instance of ContainerInterface', function (): 
     appTestCleanupDirectory($baseDir);
 });
 
+it('binds ConfirmationPrompterInterface to StdinConfirmationPrompter by default', function (): void {
+    $baseDir = sys_get_temp_dir() . '/marko-test-' . bin2hex(random_bytes(8));
+    $vendorDir = $baseDir . '/vendor';
+
+    appTestCreateModule($vendorDir . '/acme/core', 'acme/core');
+
+    $app = new Application(
+        vendorPath: $vendorDir,
+        modulesPath: '',
+        appPath: '',
+    );
+
+    $app->initialize();
+
+    // CommandRunner registers these for a running command
+    $app->container->instance(Input::class, new Input(['marko', 'test:cmd']));
+    $app->container->instance(Output::class, new Output(fopen('php://memory', 'w')));
+
+    expect($app->container->get(ConfirmationPrompterInterface::class))
+        ->toBeInstanceOf(StdinConfirmationPrompter::class);
+
+    appTestCleanupDirectory($baseDir);
+});
+
+it('lets a module binding replace the default confirmation prompter', function (): void {
+    $baseDir = sys_get_temp_dir() . '/marko-test-' . bin2hex(random_bytes(8));
+    $vendorDir = $baseDir . '/vendor';
+    $prompter = new class () implements ConfirmationPrompterInterface
+    {
+        public function isInteractive(): bool
+        {
+            return false;
+        }
+
+        public function confirm(
+            string $question,
+            bool $default = false,
+        ): bool {
+            return $default;
+        }
+    };
+
+    appTestCreateModule(
+        $vendorDir . '/acme/core',
+        'acme/core',
+        modulePhp: [
+            'bindings' => [
+                ConfirmationPrompterInterface::class => $prompter::class,
+            ],
+        ],
+    );
+
+    $app = new Application(
+        vendorPath: $vendorDir,
+        modulesPath: '',
+        appPath: '',
+    );
+
+    $app->initialize();
+
+    expect($app->container->get(ConfirmationPrompterInterface::class))->toBeInstanceOf($prompter::class);
+
+    appTestCleanupDirectory($baseDir);
+});
+
 it('loads Application class without marko/routing installed (no Router type fatal)', function (): void {
     // This test verifies that instantiating Application does not cause a fatal
     // error due to PHP resolving the Router type at class-load time.
@@ -1711,8 +1778,9 @@ it('creates a request from globals and routes it through the router', function (
             public mixed &$capturedRequest,
         ) {}
 
-        public function handle(Request $request): Response
-        {
+        public function handle(
+            Request $request,
+        ): Response {
             $this->capturedRequest = $request;
 
             return new Response('hello');
@@ -1736,8 +1804,9 @@ it('sends the response after routing', function (): void {
 
     $mockRouter = new class ()
     {
-        public function handle(Request $request): Response
-        {
+        public function handle(
+            Request $request,
+        ): Response {
             return new Response('response body');
         }
     };
@@ -1759,8 +1828,9 @@ it('returns void', function (): void {
 
     $mockRouter = new class ()
     {
-        public function handle(Request $request): Response
-        {
+        public function handle(
+            Request $request,
+        ): Response {
             return new Response('');
         }
     };
@@ -1912,8 +1982,9 @@ use Marko\\Core\\Attributes\\After;
 class GreetingPlugin$uniqueId
 {
     #[After]
-    public function greet(string \$result): string
-    {
+    public function greet(
+        string \$result,
+    ): string {
         return \$result . ' world';
     }
 }
@@ -1978,8 +2049,9 @@ use Marko\\Core\\Attributes\\After;
 class ServicePlugin$uniqueId
 {
     #[After]
-    public function run(string \$result): string
-    {
+    public function run(
+        string \$result,
+    ): string {
         return \$result . '-modified';
     }
 }
