@@ -98,6 +98,18 @@ class PluginException extends MarkoException
         );
     }
 
+    public static function unsupportedDefaultValue(
+        string $method,
+        string $parameter,
+        string $objectClass,
+    ): self {
+        return new self(
+            message: "Cannot create interceptor for '$method()': parameter \$$parameter has an object default value ($objectClass) that cannot be reproduced in the generated interceptor",
+            context: "While generating plugin interceptor method '$method()'",
+            suggestion: "Make the parameter nullable with a null default and create the object in the method body instead, e.g. ?$objectClass \$$parameter = null, then \$$parameter ??= new $objectClass()",
+        );
+    }
+
     public static function conflictingSortOrder(
         string $targetClass,
         string $targetMethod,

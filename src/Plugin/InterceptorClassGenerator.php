@@ -13,6 +13,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionType;
 use ReflectionUnionType;
+use UnitEnum;
 
 class InterceptorClassGenerator
 {
@@ -53,7 +54,7 @@ class InterceptorClassGenerator
      * Generate the PHP code string for an interface wrapper class.
      *
      * @param class-string $interfaceName
-     * @throws ReflectionException
+     * @throws PluginException|ReflectionException
      */
     public function generateInterfaceWrapperCode(
         string $interfaceName,
@@ -321,25 +322,56 @@ class InterceptorClassGenerator
     }
 
     /**
-     * Render the default value of a parameter as a PHP literal.
+     * Render the default value of a parameter as a PHP constant expression.
+     *
+     * The evaluated value is rendered rather than the original source expression: constant
+     * references such as self::X, parent::X, private constants or unqualified global constants
+     * do not resolve correctly from the generated class, but their (immutable) values do.
+     *
+     * @throws PluginException|ReflectionException
      */
     private function renderDefaultValue(ReflectionParameter $param): string
     {
-        if ($param->isDefaultValueConstant()) {
-            $constName = $param->getDefaultValueConstantName();
+        return $this->renderValue($param->getDefaultValue(), $param);
+    }
 
-            return $constName !== null ? '\\' . $constName : 'null';
+    /**
+     * Render a default value (recursively for arrays) as a PHP constant expression.
+     *
+     * @throws PluginException
+     */
+    private function renderValue(
+        mixed $value,
+        ReflectionParameter $param,
+    ): string {
+        if (is_array($value)) {
+            $items = [];
+
+            foreach ($value as $key => $item) {
+                $items[] = var_export($key, true) . ' => ' . $this->renderValue($item, $param);
+            }
+
+            return '[' . implode(', ', $items) . ']';
         }
 
-        $value = $param->getDefaultValue();
+        if ($value instanceof UnitEnum) {
+            return '\\' . $value::class . '::' . $value->name;
+        }
 
-        return match (true) {
-            $value === null => 'null',
-            is_bool($value) => $value ? 'true' : 'false',
-            is_string($value) => "'" . addslashes($value) . "'",
-            is_array($value) => '[]',
-            default => (string) $value,
-        };
+        if (is_object($value)) {
+            $method = $param->getDeclaringFunction();
+            $class = $param->getDeclaringClass()?->getName() ?? '';
+
+            throw PluginException::unsupportedDefaultValue(
+                $class . '::' . $method->getName(),
+                $param->getName(),
+                $value::class,
+            );
+        }
+
+        // null, bool, int, float and string: var_export produces an exact, eval-safe literal
+        // (floats round-trip, strings are escaped for single quotes, backslashes and NUL bytes)
+        return var_export($value, true);
     }
 
     /**

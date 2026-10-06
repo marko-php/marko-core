@@ -54,3 +54,21 @@ describe('ambiguousInterfacePlugins', function (): void {
         expect($exception)->toBeInstanceOf(PluginException::class);
     });
 });
+
+describe('unsupportedDefaultValue', function (): void {
+    it('names the method, parameter and object class in unsupportedDefaultValue', function (): void {
+        $exception = PluginException::unsupportedDefaultValue('App\Service::run', 'clock', 'App\Clock');
+
+        expect($exception->getMessage())->toContain("'App\Service::run()'")
+            ->and($exception->getMessage())->toContain('$clock')
+            ->and($exception->getMessage())->toContain('App\Clock')
+            ->and($exception->getContext())->toContain('App\Service::run()');
+    });
+
+    it('suggests a nullable parameter with a null default in unsupportedDefaultValue', function (): void {
+        $exception = PluginException::unsupportedDefaultValue('App\Service::run', 'clock', 'App\Clock');
+
+        expect($exception->getSuggestion())->toContain('?App\Clock $clock = null')
+            ->and($exception->getSuggestion())->toContain('$clock ??= new App\Clock()');
+    });
+});
