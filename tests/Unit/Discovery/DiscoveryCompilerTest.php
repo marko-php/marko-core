@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Marko\Core\Command\CommandDiscovery;
+use Marko\Core\Container\Container;
 use Marko\Core\Container\PreferenceDiscovery;
 use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Discovery\DiscoveryCache;
@@ -75,7 +76,7 @@ describe('DiscoveryCompiler', function (): void {
         'compiles an empty payload (empty preference, plugin, observer, command arrays) for modules with no attribute-bearing classes',
         function (): void {
             $module = makeCompilerTestModule('test/empty-module');
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
 
             $payload = $compiler->compile([$module['manifest']]);
 
@@ -93,7 +94,7 @@ describe('DiscoveryCompiler', function (): void {
         'includes the current cache schema version key sourced from DiscoveryCache::CACHE_VERSION (not a hardcoded literal) in the compiled payload',
         function (): void {
             $module = makeCompilerTestModule('test/version-module');
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
 
             $payload = $compiler->compile([$module['manifest']]);
 
@@ -126,7 +127,7 @@ class ReplacementService
 PHP;
             file_put_contents($module['dir'] . '/src/ReplacementService.php', $preferenceCode);
 
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
             $payload = $compiler->compile([$module['manifest']]);
 
             expect($payload['preferences'])->toHaveCount(1)
@@ -211,7 +212,7 @@ class TestCommand implements CommandInterface
 PHP;
             file_put_contents($module['dir'] . '/src/TestCommand.php', $commandCode);
 
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
             $payload = $compiler->compile([$module['manifest']]);
 
             expect($payload['plugins'])->toHaveCount(1)
@@ -260,7 +261,7 @@ PHP;
             $env = new DiscoveryEnvironment();
             $cache = new DiscoveryCache($paths, $env);
 
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
             $payload = $compiler->compile([$module['manifest']]);
             $cache->write($payload);
             $loaded = $cache->load();
@@ -334,7 +335,7 @@ class ReplacementB
 PHP;
             file_put_contents($moduleB['dir'] . '/src/ReplacementB.php', $prefB);
 
-            $compiler = new DiscoveryCompiler();
+            $compiler = new DiscoveryCompiler(new Container());
             // Pass modules in A-then-B order
             $payload = $compiler->compile([$moduleA['manifest'], $moduleB['manifest']]);
 

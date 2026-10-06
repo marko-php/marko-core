@@ -8,16 +8,42 @@ use Marko\Core\Command\CommandDefinition;
 use Marko\Core\Container\PreferenceRecord;
 use Marko\Core\Event\ObserverDefinition;
 use Marko\Core\Exceptions\DiscoveryCacheException;
+use Marko\Core\Module\CachedModule;
+use Marko\Core\Module\ModuleManifest;
 use Marko\Core\Path\ProjectPaths;
 use Marko\Core\Plugin\PluginDefinition;
 
+/**
+ * Reads and writes the compiled discovery cache file.
+ *
+ * Besides the preferences, plugins, observers and commands found by attribute
+ * discovery, the file holds the resolved module list (composer-derived fields,
+ * paths relative to the project root), the global middleware order, one
+ * section per DiscoveryCacheContributorInterface, and a fingerprint of the
+ * installed packages and module directories so a stale file fails loudly.
+ *
+ * @phpstan-type CachePayload array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[], modules?: array<ModuleManifest|CachedModule>, globalMiddleware?: array<int, string>, sections?: array<string, array<mixed>>}
+ * @phpstan-type LoadedCache array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[], modules: CachedModule[], globalMiddleware: array<int, string>, sections: array<string, array<mixed>>}
+ */
 class DiscoveryCache
 {
-    public const int CACHE_VERSION = 2;
+    public const int CACHE_VERSION = 3;
+
+    private const array REQUIRED_KEYS = [
+        'fingerprint',
+        'modules',
+        'preferences',
+        'plugins',
+        'observers',
+        'commands',
+        'globalMiddleware',
+        'sections',
+    ];
 
     public function __construct(
         private readonly ProjectPaths $projectPaths,
         private readonly DiscoveryEnvironment $discoveryEnvironment,
+        private readonly DiscoveryFingerprint $discoveryFingerprint = new DiscoveryFingerprint(),
     ) {}
 
     /**
@@ -74,7 +100,9 @@ class DiscoveryCache
      *
      * Writes atomically via a temp file in the same directory, then rename().
      *
-     * @param array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[]} $payload
+     * The fingerprint of the current project is computed and stored with the payload.
+     *
+     * @param CachePayload $payload
      *
      * @throws DiscoveryCacheException
      */
@@ -89,6 +117,13 @@ class DiscoveryCache
 
         $data = [
             'version' => self::CACHE_VERSION,
+            'fingerprint' => $this->discoveryFingerprint->compute($this->projectPaths),
+            'modules' => array_map(
+                fn (ModuleManifest|CachedModule $module): array => $this->exportModule($module),
+                array_values($payload['modules'] ?? []),
+            ),
+            'globalMiddleware' => array_values($payload['globalMiddleware'] ?? []),
+            'sections' => $payload['sections'] ?? [],
             'preferences' => array_map(
                 fn (PreferenceRecord $r) => [
                     'replacement' => $r->replacement,
@@ -146,7 +181,11 @@ class DiscoveryCache
     /**
      * Loads and hydrates the cache file into typed value objects.
      *
-     * @return array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[]}
+     * Checks, in order: the file returns an array, its version matches, every
+     * section is well-formed, and its fingerprint matches the current project
+     * (a mismatch means packages or modules changed since it was compiled).
+     *
+     * @return LoadedCache
      *
      * @throws DiscoveryCacheException
      */
@@ -165,23 +204,153 @@ class DiscoveryCache
             throw DiscoveryCacheException::malformed($path, 'cache file must return an array');
         }
 
-        $requiredKeys = ['version', 'preferences', 'plugins', 'observers', 'commands'];
-        foreach ($requiredKeys as $key) {
-            if (!array_key_exists($key, $data)) {
-                throw DiscoveryCacheException::malformed($path, "missing required key '$key'");
-            }
+        if (!array_key_exists('version', $data)) {
+            throw DiscoveryCacheException::malformed($path, "missing required key 'version'");
         }
 
         if ($data['version'] !== self::CACHE_VERSION) {
             throw DiscoveryCacheException::versionMismatch($path, (int) $data['version'], self::CACHE_VERSION);
         }
 
-        return [
+        foreach (self::REQUIRED_KEYS as $key) {
+            if (!array_key_exists($key, $data)) {
+                throw DiscoveryCacheException::malformed($path, "missing required key '$key'");
+            }
+        }
+
+        $loaded = [
             'preferences' => $this->hydratePreferences($path, $data['preferences']),
             'plugins' => $this->hydratePlugins($path, $data['plugins']),
             'observers' => $this->hydrateObservers($path, $data['observers']),
             'commands' => $this->hydrateCommands($path, $data['commands']),
+            'modules' => $this->hydrateModules($path, $data['modules']),
+            'globalMiddleware' => $this->hydrateGlobalMiddleware($path, $data['globalMiddleware']),
+            'sections' => $this->hydrateSections($path, $data['sections']),
         ];
+
+        if ($data['fingerprint'] !== $this->discoveryFingerprint->compute($this->projectPaths)) {
+            throw DiscoveryCacheException::stale(
+                $path,
+                'installed packages (vendor/composer/installed.json) or the module directories under modules/ and app/ changed since it was compiled',
+            );
+        }
+
+        return $loaded;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function exportModule(
+        ModuleManifest|CachedModule $module,
+    ): array {
+        $module = $module instanceof ModuleManifest ? CachedModule::fromManifest($module) : $module;
+        $prefix = $this->projectPaths->base . '/';
+
+        return [
+            'name' => $module->name,
+            'version' => $module->version,
+            'path' => str_starts_with($module->path, $prefix) ? substr($module->path, strlen($prefix)) : $module->path,
+            'source' => $module->source,
+            'require' => $module->require,
+            'autoload' => $module->autoload,
+            'extra' => $module->extra,
+            'after' => $module->after,
+            'before' => $module->before,
+            'globalMiddleware' => $module->globalMiddleware,
+        ];
+    }
+
+    /**
+     * @return CachedModule[]
+     *
+     * @throws DiscoveryCacheException
+     */
+    private function hydrateModules(
+        string $path,
+        mixed $records,
+    ): array {
+        if (!is_array($records)) {
+            throw DiscoveryCacheException::malformed($path, "'modules' must be an array");
+        }
+
+        $result = [];
+        foreach ($records as $i => $record) {
+            if (!is_array($record)) {
+                throw DiscoveryCacheException::malformed($path, "modules[$i] must be an array");
+            }
+            $this->assertStringField($path, $record, 'modules', $i, 'name');
+            $this->assertStringField($path, $record, 'modules', $i, 'version');
+            $this->assertStringField($path, $record, 'modules', $i, 'path');
+            $this->assertStringField($path, $record, 'modules', $i, 'source');
+            $this->assertArrayField($path, $record, 'modules', $i, 'require');
+            $this->assertArrayField($path, $record, 'modules', $i, 'autoload');
+            $this->assertArrayField($path, $record, 'modules', $i, 'extra');
+            $this->assertArrayField($path, $record, 'modules', $i, 'after');
+            $this->assertArrayField($path, $record, 'modules', $i, 'before');
+            $this->assertArrayField($path, $record, 'modules', $i, 'globalMiddleware');
+
+            $result[] = new CachedModule(
+                name: $record['name'],
+                version: $record['version'],
+                path: $this->isAbsolutePath($record['path'])
+                    ? $record['path']
+                    : $this->projectPaths->base . '/' . $record['path'],
+                source: $record['source'],
+                require: $record['require'],
+                autoload: $record['autoload'],
+                extra: $record['extra'],
+                after: $record['after'],
+                before: $record['before'],
+                globalMiddleware: $record['globalMiddleware'],
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, string>
+     *
+     * @throws DiscoveryCacheException
+     */
+    private function hydrateGlobalMiddleware(
+        string $path,
+        mixed $classes,
+    ): array {
+        if (!is_array($classes)) {
+            throw DiscoveryCacheException::malformed($path, "'globalMiddleware' must be an array");
+        }
+
+        foreach ($classes as $i => $class) {
+            if (!is_string($class)) {
+                throw DiscoveryCacheException::malformed($path, "globalMiddleware[$i] must be a string");
+            }
+        }
+
+        return array_values($classes);
+    }
+
+    /**
+     * @return array<string, array<mixed>>
+     *
+     * @throws DiscoveryCacheException
+     */
+    private function hydrateSections(
+        string $path,
+        mixed $sections,
+    ): array {
+        if (!is_array($sections)) {
+            throw DiscoveryCacheException::malformed($path, "'sections' must be an array");
+        }
+
+        foreach ($sections as $key => $section) {
+            if (!is_string($key) || !is_array($section)) {
+                throw DiscoveryCacheException::malformed($path, "sections.$key must be an array");
+            }
+        }
+
+        return $sections;
     }
 
     /**
@@ -335,10 +504,10 @@ class DiscoveryCache
         string $field,
     ): void {
         if (!array_key_exists($field, $record)) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index] missing required field '$field'");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index] missing required field '$field'");
         }
         if (!is_string($record[$field])) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index].$field must be a string");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index].$field must be a string");
         }
     }
 
@@ -355,10 +524,10 @@ class DiscoveryCache
         string $field,
     ): void {
         if (!array_key_exists($field, $record)) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index] missing required field '$field'");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index] missing required field '$field'");
         }
         if (!is_array($record[$field])) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index].$field must be an array");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index].$field must be an array");
         }
     }
 
@@ -375,10 +544,10 @@ class DiscoveryCache
         string $field,
     ): void {
         if (!array_key_exists($field, $record)) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index] missing required field '$field'");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index] missing required field '$field'");
         }
         if (!is_int($record[$field])) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index].$field must be an int");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index].$field must be an int");
         }
     }
 
@@ -395,10 +564,10 @@ class DiscoveryCache
         string $field,
     ): void {
         if (!array_key_exists($field, $record)) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index] missing required field '$field'");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index] missing required field '$field'");
         }
         if (!is_bool($record[$field])) {
-            throw DiscoveryCacheException::malformed($path, "$section[$index].$field must be a bool");
+            throw DiscoveryCacheException::malformed($path, $section . "[$index].$field must be a bool");
         }
     }
 }

@@ -31,6 +31,7 @@ readonly class ModuleManifest
      * @param Closure|null $boot Boot callback to run after bindings are registered (from module.php). Parameters are auto-injected from the container — type-hint any registered dependency, including ContainerInterface.
      * @param array<int, class-string> $globalMiddleware Global HTTP middleware classes declared by this module (from module.php). Order across modules follows DependencyResolver (composer require + sequence: { after, before }); order within a module follows array declaration order.
      * @param array<string, mixed> $extra Raw extra data from composer.json (vendor/Marko-specific metadata)
+     * @param array<int, class-string> $discovery Discovery cache contributors declared by this module (from module.php); each must implement DiscoveryCacheContributorInterface
      */
     public function __construct(
         public string $name,
@@ -47,5 +48,6 @@ readonly class ModuleManifest
         public ?Closure $boot = null,
         public array $globalMiddleware = [],
         public array $extra = [],
+        public array $discovery = [],
     ) {}
 }

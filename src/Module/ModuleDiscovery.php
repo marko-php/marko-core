@@ -170,6 +170,7 @@ readonly class ModuleDiscovery
             boot: $manifest->boot,
             globalMiddleware: $manifest->globalMiddleware,
             extra: $manifest->extra,
+            discovery: $manifest->discovery,
         );
     }
 

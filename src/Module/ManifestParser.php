@@ -11,7 +11,7 @@ use ParseError;
  * Parses module configuration from composer.json and module.php files.
  *
  * composer.json provides: name, version, require (standard Composer metadata)
- * module.php provides: enabled, sequence, bindings (Marko-specific config)
+ * module.php provides: enabled, sequence, bindings, discovery (Marko-specific config)
  */
 class ManifestParser
 {
@@ -25,23 +25,74 @@ class ManifestParser
         string $modulePath,
     ): ModuleManifest {
         $composerData = $this->parseComposerJson($modulePath);
-        $moduleData = $this->parseModulePhp($modulePath);
 
+        return $this->build(
+            moduleData: $this->parseModulePhp($modulePath),
+            name: $composerData['name'],
+            version: $composerData['version'] ?? '1.0.0',
+            require: $this->extractMarkoRequirements($composerData['require'] ?? []),
+            autoload: $composerData['autoload']['psr-4'] ?? [],
+            extra: $composerData['extra'] ?? [],
+        );
+    }
+
+    /**
+     * Rebuild a manifest from its cached composer data and the module's live module.php.
+     *
+     * Never reads composer.json. module.php is still required, so its closures
+     * (bindings, boot callbacks) stay live.
+     *
+     * @throws ModuleException If module.php has syntax errors or does not return an array
+     */
+    public function parseCached(
+        CachedModule $cachedModule,
+    ): ModuleManifest {
+        return $this->build(
+            moduleData: $this->parseModulePhp($cachedModule->path),
+            name: $cachedModule->name,
+            version: $cachedModule->version,
+            require: $cachedModule->require,
+            autoload: $cachedModule->autoload,
+            extra: $cachedModule->extra,
+            path: $cachedModule->path,
+            source: $cachedModule->source,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $moduleData
+     * @param array<string, string> $require
+     * @param array<string, string> $autoload
+     * @param array<string, mixed> $extra
+     */
+    private function build(
+        array $moduleData,
+        string $name,
+        string $version,
+        array $require,
+        array $autoload,
+        array $extra,
+        string $path = '',
+        string $source = '',
+    ): ModuleManifest {
         $sequence = $moduleData['sequence'] ?? [];
 
         return new ModuleManifest(
-            name: $composerData['name'],
-            version: $composerData['version'] ?? '1.0.0',
+            name: $name,
+            version: $version,
             enabled: $moduleData['enabled'] ?? true,
-            require: $this->extractMarkoRequirements($composerData['require'] ?? []),
+            require: $require,
             after: $sequence['after'] ?? [],
             before: $sequence['before'] ?? [],
             bindings: $moduleData['bindings'] ?? [],
             singletons: $moduleData['singletons'] ?? [],
-            autoload: $composerData['autoload']['psr-4'] ?? [],
+            path: $path,
+            source: $source,
+            autoload: $autoload,
             boot: $moduleData['boot'] ?? null,
             globalMiddleware: $moduleData['globalMiddleware'] ?? [],
-            extra: $composerData['extra'] ?? [],
+            extra: $extra,
+            discovery: $moduleData['discovery'] ?? [],
         );
     }
 

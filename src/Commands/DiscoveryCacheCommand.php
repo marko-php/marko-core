@@ -11,7 +11,9 @@ use Marko\Core\Command\Output;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryCompiler;
 use Marko\Core\Exceptions\DiscoveryCacheException;
+use Marko\Core\Exceptions\ModuleException;
 use Marko\Core\Module\ModuleRepositoryInterface;
+use Psr\Container\ContainerExceptionInterface;
 
 /** @noinspection PhpUnused */
 #[Command(name: 'discovery:cache', description: 'Compile the discovery cache')]
@@ -23,14 +25,15 @@ readonly class DiscoveryCacheCommand implements CommandInterface
         private ModuleRepositoryInterface $moduleRepository,
     ) {}
 
+    /**
+     * @throws ModuleException|ContainerExceptionInterface
+     */
     public function execute(
         Input $input,
         Output $output,
     ): int {
-        $modules = $this->moduleRepository->all();
-        $payload = $this->discoveryCompiler->compile($modules);
-
         try {
+            $payload = $this->discoveryCompiler->compile($this->moduleRepository->all());
             $this->discoveryCache->write($payload);
         } catch (DiscoveryCacheException $e) {
             $output->writeLine($e->getMessage());
@@ -45,6 +48,13 @@ readonly class DiscoveryCacheCommand implements CommandInterface
         $output->writeLine('plugins: ' . count($payload['plugins']));
         $output->writeLine('observers: ' . count($payload['observers']));
         $output->writeLine('commands: ' . count($payload['commands']));
+        $output->writeLine('modules: ' . count($payload['modules']));
+        $output->writeLine('global middleware: ' . count($payload['globalMiddleware']));
+        $output->writeLine('sections: ' . ($payload['sections'] === [] ? 'none' : implode(', ', array_map(
+            fn (string $key, array $section): string => "$key (" . count($section) . ')',
+            array_keys($payload['sections']),
+            $payload['sections'],
+        ))));
 
         return 0;
     }
