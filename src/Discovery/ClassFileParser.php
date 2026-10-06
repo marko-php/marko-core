@@ -20,23 +20,39 @@ class ClassFileParser
 {
     /**
      * Extract the fully qualified class name from a PHP file.
+     *
+     * Returns the first class, interface, trait or enum the file declares.
      */
     public function extractClassName(
         string $filePath,
     ): ?string {
+        return $this->extractClassNames($filePath)[0] ?? null;
+    }
+
+    /**
+     * Extract the fully qualified name of every class, interface, trait and enum a PHP file declares.
+     *
+     * Each name is qualified with the namespace in effect where it is declared, so a file with
+     * several (bracketed) namespaces is handled. Anonymous classes and ::class references are skipped.
+     *
+     * @return array<int, string>
+     */
+    public function extractClassNames(
+        string $filePath,
+    ): array {
         if (!is_file($filePath)) {
-            return null;
+            return [];
         }
 
         $contents = file_get_contents($filePath);
 
         if ($contents === false) {
-            return null;
+            return [];
         }
 
         $tokens = token_get_all($contents);
-        $namespace = null;
-        $typeName = null;
+        $namespace = '';
+        $classNames = [];
         $prevSignificant = null;
         $tokenCount = count($tokens);
 
@@ -56,70 +72,99 @@ class ClassFileParser
             }
 
             if ($id === T_NAMESPACE) {
-                // Consume namespace name tokens until ';' or '{'
-                $namespaceParts = [];
-                for ($j = $i + 1; $j < $tokenCount; $j++) {
-                    $t = $tokens[$j];
-                    if (!is_array($t)) {
-                        // ';' or '{' ends the namespace
-                        break;
-                    }
-                    [$tid, $tval] = $t;
-                    if (in_array($tid, [T_STRING, T_NAME_QUALIFIED, T_NS_SEPARATOR], true)) {
-                        $namespaceParts[] = $tval;
-                    } elseif ($tid !== T_WHITESPACE) {
-                        break;
-                    }
-                }
-                $namespace = implode('', $namespaceParts);
+                $namespace = $this->readNamespace($tokens, $i + 1);
                 $prevSignificant = $token;
                 continue;
             }
 
             if (in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)) {
-                // Skip ::class constant references
-                if ($prevSignificant === '::' || (is_array(
-                    $prevSignificant,
-                ) && $prevSignificant[0] === T_DOUBLE_COLON)) {
+                if ($this->isClassReference($prevSignificant)) {
                     $prevSignificant = $token;
                     continue;
                 }
 
-                // Skip anonymous classes (new class)
-                if (is_array($prevSignificant) && $prevSignificant[0] === T_NEW) {
-                    $prevSignificant = $token;
-                    continue;
-                }
-
-                // Find the name token (T_STRING) after the type keyword, skipping whitespace
-                for ($j = $i + 1; $j < $tokenCount; $j++) {
-                    $t = $tokens[$j];
-                    if (!is_array($t)) {
-                        break;
-                    }
-                    [$tid, $tval] = $t;
-                    if ($tid === T_WHITESPACE) {
-                        continue;
-                    }
-                    if ($tid === T_STRING) {
-                        $typeName = $tval;
-                    }
-                    break;
-                }
+                $typeName = $this->readTypeName($tokens, $i + 1);
 
                 if ($typeName !== null) {
-                    break;
+                    $classNames[] = $namespace !== '' ? $namespace . '\\' . $typeName : $typeName;
                 }
             }
 
             $prevSignificant = $token;
         }
 
-        if ($typeName === null) {
-            return null;
+        return $classNames;
+    }
+
+    /**
+     * Read a namespace name, starting just after the namespace keyword, until ';' or '{'.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     */
+    private function readNamespace(
+        array $tokens,
+        int $start,
+    ): string {
+        $namespaceParts = [];
+        $tokenCount = count($tokens);
+
+        for ($j = $start; $j < $tokenCount; $j++) {
+            $t = $tokens[$j];
+            if (!is_array($t)) {
+                // ';' or '{' ends the namespace
+                break;
+            }
+            [$tid, $tval] = $t;
+            if (in_array($tid, [T_STRING, T_NAME_QUALIFIED, T_NS_SEPARATOR], true)) {
+                $namespaceParts[] = $tval;
+            } elseif ($tid !== T_WHITESPACE) {
+                break;
+            }
         }
 
-        return $namespace !== null ? $namespace . '\\' . $typeName : $typeName;
+        return implode('', $namespaceParts);
+    }
+
+    /**
+     * Whether a class-like keyword is a ::class constant reference or an anonymous class (new class).
+     *
+     * @param array{0: int, 1: string, 2: int}|string|null $prevSignificant
+     */
+    private function isClassReference(
+        array|string|null $prevSignificant,
+    ): bool {
+        if ($prevSignificant === '::') {
+            return true;
+        }
+
+        return is_array($prevSignificant) && in_array($prevSignificant[0], [T_DOUBLE_COLON, T_NEW], true);
+    }
+
+    /**
+     * Read the name token (T_STRING) after a type keyword, skipping whitespace.
+     *
+     * @param array<int, array{0: int, 1: string, 2: int}|string> $tokens
+     */
+    private function readTypeName(
+        array $tokens,
+        int $start,
+    ): ?string {
+        $tokenCount = count($tokens);
+
+        for ($j = $start; $j < $tokenCount; $j++) {
+            $t = $tokens[$j];
+            if (!is_array($t)) {
+                return null;
+            }
+            [$tid, $tval] = $t;
+            if ($tid === T_WHITESPACE) {
+                continue;
+            }
+
+            return $tid === T_STRING ? $tval : null;
+        }
+
+        return null;
     }
 
     /**

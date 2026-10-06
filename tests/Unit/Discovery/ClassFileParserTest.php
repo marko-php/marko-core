@@ -431,3 +431,164 @@ PHP;
     unlink($tempDir . '/UserEntity.php');
     rmdir($tempDir);
 });
+
+/**
+ * Write PHP source to a temporary file, run the callback on its path, then remove it.
+ */
+function withClassFileParserSource(
+    string $code,
+    callable $callback,
+): mixed {
+    $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
+    mkdir($tempDir, 0755, true);
+    $path = $tempDir . '/Source.php';
+    file_put_contents($path, $code);
+
+    try {
+        return $callback($path);
+    } finally {
+        unlink($path);
+        rmdir($tempDir);
+    }
+}
+
+it('extracts every class declared in a file', function (): void {
+    $code = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Admin;
+
+class FirstSection {}
+
+interface SectionMarker {}
+
+final class SecondSection {}
+
+enum Kind: string
+{
+    case One = 'one';
+}
+PHP;
+
+    $classNames = withClassFileParserSource(
+        $code,
+        fn (string $path): array => new ClassFileParser()->extractClassNames($path),
+    );
+
+    expect($classNames)->toBe([
+        'App\\Admin\\FirstSection',
+        'App\\Admin\\SectionMarker',
+        'App\\Admin\\SecondSection',
+        'App\\Admin\\Kind',
+    ]);
+});
+
+it('qualifies each class with the namespace it is declared in', function (): void {
+    $code = <<<'PHP'
+<?php
+
+namespace App\First {
+    class Alpha {}
+}
+
+namespace App\Second {
+    class Beta {}
+}
+PHP;
+
+    $classNames = withClassFileParserSource(
+        $code,
+        fn (string $path): array => new ClassFileParser()->extractClassNames($path),
+    );
+
+    expect($classNames)->toBe(['App\\First\\Alpha', 'App\\Second\\Beta']);
+});
+
+it('skips anonymous classes and ::class references when extracting every class', function (): void {
+    $code = <<<'PHP'
+<?php
+
+namespace App\Services;
+
+class Factory
+{
+    public function make(): object
+    {
+        $name = self::class;
+
+        return new class {};
+    }
+}
+
+class Other {}
+PHP;
+
+    $classNames = withClassFileParserSource(
+        $code,
+        fn (string $path): array => new ClassFileParser()->extractClassNames($path),
+    );
+
+    expect($classNames)->toBe(['App\\Services\\Factory', 'App\\Services\\Other']);
+});
+
+it('returns an empty list for a file with no class', function (): void {
+    $code = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+function helper(): string
+{
+    return 'class';
+}
+PHP;
+
+    $classNames = withClassFileParserSource(
+        $code,
+        fn (string $path): array => new ClassFileParser()->extractClassNames($path),
+    );
+
+    expect($classNames)->toBe([]);
+});
+
+it('returns an unqualified name for a class in the global namespace block', function (): void {
+    $code = <<<'PHP'
+<?php
+
+namespace App\Scoped {
+    class Scoped {}
+}
+
+namespace {
+    class GlobalScoped {}
+}
+PHP;
+
+    $classNames = withClassFileParserSource(
+        $code,
+        fn (string $path): array => new ClassFileParser()->extractClassNames($path),
+    );
+
+    expect($classNames)->toBe(['App\\Scoped\\Scoped', 'GlobalScoped']);
+});
+
+it('keeps extractClassName returning the first declared class', function (): void {
+    $code = <<<'PHP'
+<?php
+
+namespace App\Services;
+
+class First {}
+
+class Second {}
+PHP;
+
+    $className = withClassFileParserSource(
+        $code,
+        fn (string $path): ?string => new ClassFileParser()->extractClassName($path),
+    );
+
+    expect($className)->toBe('App\\Services\\First');
+});
