@@ -12,6 +12,7 @@ use Marko\Core\Module\CachedModule;
 use Marko\Core\Module\ModuleManifest;
 use Marko\Core\Path\ProjectPaths;
 use Marko\Core\Plugin\PluginDefinition;
+use Marko\Core\Support\ErrorCapture;
 
 /**
  * Reads and writes the compiled discovery cache file.
@@ -114,9 +115,7 @@ class DiscoveryCache
         $dir = dirname($path);
 
         if (!is_dir($dir)) {
-            $reason = null;
-
-            if (!$this->capturing($reason, fn (): bool => mkdir($dir, 0755, true)) && !is_dir($dir)) {
+            if (!ErrorCapture::run($reason, fn (): bool => mkdir($dir, 0755, true)) && !is_dir($dir)) {
                 throw DiscoveryCacheException::notWritable($path, $reason);
             }
         }
@@ -174,44 +173,14 @@ class DiscoveryCache
 
         $tmp = $dir . '/.discovery_cache_' . uniqid('', true) . '.tmp';
 
-        $reason = null;
-
-        if ($this->capturing($reason, fn (): int|false => file_put_contents($tmp, $content)) === false) {
+        if (ErrorCapture::run($reason, fn (): int|false => file_put_contents($tmp, $content)) === false) {
             throw DiscoveryCacheException::notWritable($path, $reason);
         }
 
-        $reason = null;
-
-        if (!$this->capturing($reason, fn (): bool => rename($tmp, $path))) {
+        if (!ErrorCapture::run($reason, fn (): bool => rename($tmp, $path))) {
             @unlink($tmp);
 
             throw DiscoveryCacheException::notWritable($path, $reason);
-        }
-    }
-
-    /**
-     * Runs a filesystem call, capturing its PHP warning message instead of emitting it.
-     *
-     * @template T
-     *
-     * @param callable(): T $operation
-     *
-     * @return T
-     */
-    private function capturing(
-        ?string &$reason,
-        callable $operation,
-    ): mixed {
-        set_error_handler(function (int $errno, string $message) use (&$reason): bool {
-            $reason = $message;
-
-            return true;
-        });
-
-        try {
-            return $operation();
-        } finally {
-            restore_error_handler();
         }
     }
 
