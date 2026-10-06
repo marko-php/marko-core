@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Marko\Core\Discovery;
 
 use Error;
+use Marko\Core\Environment\AppEnvironment;
 use Marko\Core\Exceptions\MarkoException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -18,6 +19,13 @@ use SplFileInfo;
  */
 class ClassFileParser
 {
+    /** @var array<string, DiscoverySkip> skips this parser recorded, keyed by file path */
+    private array $skippedFiles = [];
+
+    public function __construct(
+        private readonly AppEnvironment $appEnvironment = new AppEnvironment(),
+    ) {}
+
     /**
      * Extract the fully qualified class name from a PHP file.
      *
@@ -174,6 +182,10 @@ class ClassFileParser
      * (the file depends on an uninstalled optional package). Non-Marko missing
      * classes are re-thrown as real errors.
      *
+     * A skip is never silent: it is recorded on this parser (skippedFiles()) and
+     * in the process-wide DiscoverySkips, and outside production a warning naming
+     * the skipped class and the missing class is written to the PHP error log.
+     *
      * @return bool True if the class was loaded successfully, false if skipped
      */
     public function loadClass(
@@ -192,13 +204,37 @@ class ClassFileParser
             }
         } catch (Error $e) {
             $missingClass = MarkoException::extractMissingClass($e);
-            if ($missingClass !== null && MarkoException::inferPackageName($missingClass) !== null) {
+            $missingPackage = $missingClass !== null ? MarkoException::inferPackageName($missingClass) : null;
+            if ($missingClass !== null && $missingPackage !== null) {
+                $this->recordSkip(new DiscoverySkip($filePath, $className, $missingClass, $missingPackage));
+
                 return false;
             }
             throw $e;
         }
 
         return true;
+    }
+
+    /**
+     * Files this parser skipped because they reference a class from an uninstalled Marko package.
+     *
+     * @return list<DiscoverySkip>
+     */
+    public function skippedFiles(): array
+    {
+        return array_values($this->skippedFiles);
+    }
+
+    private function recordSkip(
+        DiscoverySkip $skip,
+    ): void {
+        $this->skippedFiles[$skip->filePath] = $skip;
+
+        // Several discovery passes load the same file; warn once per file per process.
+        if (DiscoverySkips::record($skip) && !$this->appEnvironment->isProduction()) {
+            error_log('[marko] ' . $skip->message());
+        }
     }
 
     /**

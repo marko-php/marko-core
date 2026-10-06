@@ -10,6 +10,7 @@ use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryCompiler;
+use Marko\Core\Discovery\DiscoverySkips;
 use Marko\Core\Exceptions\DiscoveryCacheException;
 use Marko\Core\Exceptions\ModuleException;
 use Marko\Core\Module\ModuleRepositoryInterface;
@@ -56,6 +57,17 @@ readonly class DiscoveryCacheCommand implements CommandInterface
             array_keys($payload['sections']),
             $payload['sections'],
         ))));
+
+        // Files skipped because they reference an uninstalled Marko package are left out of the
+        // cache; list them so a typo or missing dependency in a Preference or Plugin is visible.
+        $skips = DiscoverySkips::all();
+        $output->writeLine('skipped files: ' . count($skips));
+
+        foreach ($skips as $skip) {
+            $output->writeLine(
+                "  $skip->filePath ($skip->className): missing $skip->missingClass ($skip->missingPackage)",
+            );
+        }
 
         return 0;
     }

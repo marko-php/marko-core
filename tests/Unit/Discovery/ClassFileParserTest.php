@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Marko\Core\Discovery\ClassFileParser;
+use Marko\Core\Discovery\DiscoverySkips;
+use Marko\Core\Environment\AppEnvironment;
 
 it('extracts class name from file with namespace', function (): void {
     $tempDir = sys_get_temp_dir() . '/marko_test_' . bin2hex(random_bytes(8));
@@ -591,4 +593,120 @@ PHP;
     );
 
     expect($className)->toBe('App\\Services\\First');
+});
+
+/**
+ * Write a class extending a class from the nonexistent Marko\Nope package and load it.
+ *
+ * @return array{loaded: bool, path: string, className: string, log: string}
+ */
+function loadClassReferencingMissingMarkoPackage(
+    ClassFileParser $parser,
+): array {
+    $shortName = 'Skipped' . bin2hex(random_bytes(6));
+    $className = 'App\\Skips\\' . $shortName;
+    $code = <<<PHP
+<?php
+
+declare(strict_types=1);
+
+namespace App\\Skips;
+
+class $shortName extends \\Marko\\Nope\\Foo {}
+PHP;
+
+    $logFile = (string) tempnam(sys_get_temp_dir(), 'marko_skip_log_');
+    $originalLog = ini_set('error_log', $logFile);
+
+    try {
+        [$loaded, $path] = withClassFileParserSource(
+            $code,
+            fn (string $path): array => [$parser->loadClass($path, $className), $path],
+        );
+    } finally {
+        ini_set('error_log', $originalLog === false ? '' : $originalLog);
+    }
+
+    $log = (string) file_get_contents($logFile);
+    unlink($logFile);
+
+    return ['loaded' => $loaded, 'path' => $path, 'className' => $className, 'log' => $log];
+}
+
+describe('loadClass skip visibility', function (): void {
+    beforeEach(function (): void {
+        DiscoverySkips::clear();
+    });
+
+    afterEach(function (): void {
+        DiscoverySkips::clear();
+    });
+
+    it('skips a file that references a missing Marko class without throwing', function (): void {
+        $result = loadClassReferencingMissingMarkoPackage(new ClassFileParser(new AppEnvironment([])));
+
+        expect($result['loaded'])->toBeFalse();
+    });
+
+    it('records the skipped file and the missing class on the parser', function (): void {
+        $parser = new ClassFileParser(new AppEnvironment([]));
+        $result = loadClassReferencingMissingMarkoPackage($parser);
+
+        $skips = $parser->skippedFiles();
+
+        expect($skips)->toHaveCount(1)
+            ->and($skips[0]->filePath)->toBe($result['path'])
+            ->and($skips[0]->className)->toBe($result['className'])
+            ->and($skips[0]->missingClass)->toBe('Marko\\Nope\\Foo')
+            ->and($skips[0]->missingPackage)->toBe('marko/nope');
+    });
+
+    it('records the skip process-wide so parsers built inside discovery classes are visible', function (): void {
+        $result = loadClassReferencingMissingMarkoPackage(new ClassFileParser(new AppEnvironment([])));
+
+        $skips = DiscoverySkips::all();
+
+        expect($skips)->toHaveCount(1)
+            ->and($skips[0]->filePath)->toBe($result['path'])
+            ->and($skips[0]->missingClass)->toBe('Marko\\Nope\\Foo');
+    });
+
+    it('logs a warning naming the skipped class and the missing class outside production', function (): void {
+        $parser = new ClassFileParser(new AppEnvironment(['APP_ENV' => 'development']));
+        $result = loadClassReferencingMissingMarkoPackage($parser);
+
+        expect($result['log'])->toContain($result['className'])
+            ->and($result['log'])->toContain($result['path'])
+            ->and($result['log'])->toContain('Marko\\Nope\\Foo')
+            ->and($result['log'])->toContain('marko/nope');
+    });
+
+    it('does not log a warning in production', function (): void {
+        $parser = new ClassFileParser(new AppEnvironment(['APP_ENV' => 'production']));
+        $result = loadClassReferencingMissingMarkoPackage($parser);
+
+        expect($result['loaded'])->toBeFalse()
+            ->and($result['log'])->toBe('')
+            ->and($parser->skippedFiles())->toHaveCount(1);
+    });
+
+    it('still throws when the missing class is not a Marko class', function (): void {
+        $shortName = 'Broken' . bin2hex(random_bytes(6));
+        $code = <<<PHP
+<?php
+
+declare(strict_types=1);
+
+namespace App\\Skips;
+
+class $shortName extends \\Vendor\\Missing\\Base {}
+PHP;
+        $parser = new ClassFileParser(new AppEnvironment([]));
+
+        expect(fn (): mixed => withClassFileParserSource(
+            $code,
+            fn (string $path): bool => $parser->loadClass($path, 'App\\Skips\\' . $shortName),
+        ))->toThrow(Error::class, 'Vendor\\Missing\\Base')
+            ->and($parser->skippedFiles())->toBe([]);
+    });
 });

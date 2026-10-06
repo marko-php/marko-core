@@ -9,6 +9,8 @@ use Marko\Core\Container\Container;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryCompiler;
 use Marko\Core\Discovery\DiscoveryEnvironment;
+use Marko\Core\Discovery\DiscoverySkip;
+use Marko\Core\Discovery\DiscoverySkips;
 use Marko\Core\Module\ModuleRepositoryInterface;
 use Marko\Core\Path\ProjectPaths;
 
@@ -141,6 +143,35 @@ it('reports module, middleware and section counts from discovery:cache', functio
 
     fclose($setup['stream']);
     discoveryCacheTestCleanup($dir);
+});
+
+it('lists files discovery skipped because they reference an uninstalled Marko package', function (): void {
+    DiscoverySkips::clear();
+    DiscoverySkips::record(new DiscoverySkip(
+        filePath: '/app/src/Plugin/AuthPlugin.php',
+        className: 'App\\Plugin\\AuthPlugin',
+        missingClass: 'Marko\\Nope\\Foo',
+        missingPackage: 'marko/nope',
+    ));
+
+    $dir = sys_get_temp_dir() . '/marko_cache_cmd_test_' . uniqid('', true);
+    $setup = makeDiscoveryCacheSetup($dir);
+
+    try {
+        $setup['command']->execute($setup['input'], $setup['output']);
+
+        rewind($setup['stream']);
+        $result = (string) stream_get_contents($setup['stream']);
+
+        expect($result)->toContain('skipped files: 1')
+            ->and($result)->toContain(
+                '/app/src/Plugin/AuthPlugin.php (App\\Plugin\\AuthPlugin): missing Marko\\Nope\\Foo (marko/nope)',
+            );
+    } finally {
+        DiscoverySkips::clear();
+        fclose($setup['stream']);
+        discoveryCacheTestCleanup($dir);
+    }
 });
 
 it(
