@@ -174,6 +174,9 @@ it('detects and reports circular dependencies', function (): void {
 
     expect(fn () => $app->initialize())->toThrow(CircularDependencyException::class);
 
+    // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+    $app->bootstrapErrorHandler->unregister();
+
     appTestCleanupDirectory($baseDir);
 });
 

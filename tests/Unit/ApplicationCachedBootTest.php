@@ -128,8 +128,13 @@ describe('Application cached boot', function (): void {
         cachedBootCompile($this->project['base']);
         file_put_contents($this->project['base'] . '/app/blog/composer.json', '{"name": "app/blog"}');
 
-        expect(fn () => cachedBootApplication($this->project['base'])->initialize())
+        $app = cachedBootApplication($this->project['base']);
+
+        expect(fn () => $app->initialize())
             ->toThrow(DiscoveryCacheException::class, 'is stale');
+
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $app->bootstrapErrorHandler->unregister();
     });
 
     it('rebuilds modules from the cache with their live module.php', function (): void {
@@ -181,16 +186,26 @@ describe('Application cached boot', function (): void {
             "<?php\n\nreturn ['enabled' => false, 'sequence' => ['after' => ['acme/core']]];\n",
         );
 
-        expect(fn () => cachedBootApplication($this->project['base'])->initialize())
+        $app = cachedBootApplication($this->project['base']);
+
+        expect(fn () => $app->initialize())
             ->toThrow(DiscoveryCacheException::class, "module.php of 'app/blog' changed");
+
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $app->bootstrapErrorHandler->unregister();
     });
 
     it("throws stale when a cached module's sequence changed in module.php", function (): void {
         cachedBootCompile($this->project['base']);
         file_put_contents($this->project['base'] . '/app/blog/module.php', "<?php\n\nreturn [];\n");
 
-        expect(fn () => cachedBootApplication($this->project['base'])->initialize())
+        $app = cachedBootApplication($this->project['base']);
+
+        expect(fn () => $app->initialize())
             ->toThrow(DiscoveryCacheException::class, "module.php of 'app/blog' changed");
+
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $app->bootstrapErrorHandler->unregister();
     });
 
     it('ignores the cache when initialize is called with useDiscoveryCache false', function (): void {
@@ -214,7 +229,12 @@ describe('Application cached boot', function (): void {
             '{"packages": [{"name": "acme/new"}]}',
         );
 
-        expect(fn () => cachedBootApplication($this->project['base'])->initialize())
+        $app = cachedBootApplication($this->project['base']);
+
+        expect(fn () => $app->initialize())
             ->toThrow(DiscoveryCacheException::class, 'is stale');
+
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $app->bootstrapErrorHandler->unregister();
     });
 });

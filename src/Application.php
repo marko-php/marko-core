@@ -21,6 +21,7 @@ use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryEnvironment;
 use Marko\Core\Environment\AppEnvironment;
+use Marko\Core\Error\BootstrapErrorHandler;
 use Marko\Core\Event\ApplicationBooted;
 use Marko\Core\Event\EventDispatcher;
 use Marko\Core\Event\EventDispatcherInterface;
@@ -94,6 +95,9 @@ class Application
     /**
      * The module discovery, manifest parser and class file parser are injectable
      * so tests can observe that a discovery-cache boot never touches them.
+     *
+     * The bootstrap error handler guards initialize() until an errors module
+     * registers its own handler.
      */
     public function __construct(
         public private(set) readonly string $vendorPath = '',
@@ -102,6 +106,7 @@ class Application
         private readonly ManifestParser $manifestParser = new ManifestParser(),
         private readonly ModuleDiscovery $moduleDiscovery = new ModuleDiscovery(new ManifestParser()),
         private readonly ClassFileParser $classFileParser = new ClassFileParser(),
+        public readonly BootstrapErrorHandler $bootstrapErrorHandler = new BootstrapErrorHandler(),
     ) {}
 
     /**
@@ -137,6 +142,11 @@ class Application
     public function initialize(
         bool $useDiscoveryCache = true,
     ): void {
+        // Before anything else can throw: a boot-time exception must never reach PHP's native
+        // "Uncaught ... Stack trace" output. An errors module's boot callback replaces this
+        // handler; without one it is removed again once boot completes.
+        $this->bootstrapErrorHandler->register();
+
         // Project paths derive from the vendor path
         $basePath = dirname($this->vendorPath);
         $projectPaths = new ProjectPaths($basePath);
@@ -145,6 +155,9 @@ class Application
         if (class_exists(EnvLoader::class)) {
             (new EnvLoader())->load($basePath);
         }
+
+        // .env may have set the environment, which decides whether display_errors stays off
+        $this->bootstrapErrorHandler->applyDisplayErrors();
 
         // One shared answer to "which environment is this?" for the whole application
         $appEnvironment = new AppEnvironment();
@@ -197,6 +210,7 @@ class Application
         }
 
         $this->container->instance(AppEnvironment::class, $appEnvironment);
+        $this->container->instance(BootstrapErrorHandler::class, $this->bootstrapErrorHandler);
 
         // Contributor sections (routes, entities, ...) for the packages that own them
         $this->container->instance(
@@ -255,6 +269,9 @@ class Application
 
         // Observers that check what any module's boot callback set up run once everything has booted.
         $this->eventDispatcher->dispatch(new ApplicationBooted());
+
+        // Boot succeeded; the bootstrap handler is only meant to cover boot itself
+        $this->bootstrapErrorHandler->unregister();
     }
 
     /**
