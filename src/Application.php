@@ -14,6 +14,7 @@ use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Container\PreferenceDiscovery;
 use Marko\Core\Container\PreferenceRecord;
 use Marko\Core\Container\PreferenceRegistry;
+use Marko\Core\Discovery\CachedDiscovery;
 use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryEnvironment;
@@ -32,6 +33,7 @@ use Marko\Core\Exceptions\EventException;
 use Marko\Core\Exceptions\ModuleException;
 use Marko\Core\Exceptions\PluginException;
 use Marko\Core\Exceptions\PreferenceConflictException;
+use Marko\Core\Module\CachedModule;
 use Marko\Core\Module\DependencyResolver;
 use Marko\Core\Module\GlobalMiddlewareResolver;
 use Marko\Core\Module\ManifestParser;
@@ -86,12 +88,17 @@ class Application
         );
     }
 
-    private ClassFileParser $classFileParser;
-
+    /**
+     * The module discovery, manifest parser and class file parser are injectable
+     * so tests can observe that a discovery-cache boot never touches them.
+     */
     public function __construct(
         public private(set) readonly string $vendorPath = '',
         public private(set) readonly string $modulesPath = '',
         public private(set) readonly string $appPath = '',
+        private readonly ManifestParser $manifestParser = new ManifestParser(),
+        private readonly ModuleDiscovery $moduleDiscovery = new ModuleDiscovery(new ManifestParser()),
+        private readonly ClassFileParser $classFileParser = new ClassFileParser(),
     ) {}
 
     /**
@@ -117,45 +124,64 @@ class Application
     /**
      * @throws ModuleException|CircularDependencyException|BindingConflictException|BindingException|PluginException|PreferenceConflictException|EventException|ContainerExceptionInterface|RouteException|RouteConflictException|CommandException|ReflectionException|DiscoveryCacheException
      */
-    public function initialize(): void
-    {
+    /**
+     * @param bool $useDiscoveryCache False boots from live discovery even when a discovery cache exists
+     *                                (used by discovery:cache and discovery:clear, which must work while the cache is stale)
+     *
+     * @throws ModuleException|CircularDependencyException|BindingConflictException|BindingException|PluginException|PreferenceConflictException|EventException|ContainerExceptionInterface|RouteException|RouteConflictException|CommandException|ReflectionException|DiscoveryCacheException
+     */
+    public function initialize(
+        bool $useDiscoveryCache = true,
+    ): void {
+        // Project paths derive from the vendor path
+        $basePath = dirname($this->vendorPath);
+        $projectPaths = new ProjectPaths($basePath);
+
         // Load environment variables if marko/env is installed
         if (class_exists(EnvLoader::class)) {
-            $basePath = dirname($this->vendorPath);
             (new EnvLoader())->load($basePath);
         }
 
-        $parser = new ManifestParser();
-        $discovery = new ModuleDiscovery($parser);
-        $resolver = new DependencyResolver();
+        // One shared answer to "which environment is this?" for the whole application
+        $appEnvironment = new AppEnvironment();
 
-        $vendorModules = $discovery->discoverInVendor($this->vendorPath);
-        $customModules = $discovery->discoverInModules($this->modulesPath);
-        $appModules = $discovery->discoverInApp($this->appPath);
+        // Decide before module discovery whether to hydrate from the cache or run live scans.
+        // The gate reads DiscoveryEnvironment ($_ENV with getenv() fallback) — no marko/config dependency.
+        $env = new DiscoveryEnvironment($appEnvironment);
+        $cache = new DiscoveryCache($projectPaths, $env);
+        $useCache = $useDiscoveryCache && $env->enabled() && !$appEnvironment->isDevelopment() && $cache->exists();
 
-        $allModules = array_merge($vendorModules, $customModules, $appModules);
+        // Load the cache payload once. A corrupt, version-mismatched or stale cache throws
+        // DiscoveryCacheException loudly — no silent fallback, no silent rebuild.
+        $cachePayload = $useCache ? $cache->load() : null;
 
-        // Resolve dependencies and sort modules
-        $this->modules = $resolver->resolve($allModules);
-
-        // Register PSR-4 autoloaders for non-vendor modules
-        $this->registerAutoloaders();
+        if ($cachePayload !== null) {
+            // Cached boot: no vendor scan, no composer.json parsing, no dependency sort.
+            $this->modules = $this->modulesFromCache($cachePayload['modules'], $cache->path());
+            $this->registerAutoloadersFor($this->modules);
+        } else {
+            $this->modules = new DependencyResolver()->resolve(array_merge(
+                $this->moduleDiscovery->discoverInVendor($this->vendorPath),
+                $this->moduleDiscovery->discoverInModules($this->modulesPath),
+                $this->moduleDiscovery->discoverInApp($this->appPath),
+            ));
+            $this->registerAutoloaders();
+        }
 
         // Initialize container and registries
-        $this->classFileParser = new ClassFileParser();
         $this->preferenceRegistry = new PreferenceRegistry();
         $this->pluginRegistry = new PluginRegistry();
         $this->container = new Container($this->preferenceRegistry);
         $this->container->instance(ContainerInterface::class, $this->container);
+        $this->container->instance(PreferenceRegistry::class, $this->preferenceRegistry);
+        $this->container->instance(ClassFileParser::class, $this->classFileParser);
         $interceptor = new PluginInterceptor($this->container, $this->pluginRegistry, new InterceptorClassGenerator());
         $this->container->setPluginInterceptor($interceptor);
         $this->container->instance(PluginInterceptor::class, $interceptor);
         $this->container->instance(PluginRegistry::class, $this->pluginRegistry);
         $bindingRegistry = new BindingRegistry($this->container);
 
-        // Register ProjectPaths for dependency injection (base path derived from vendor path)
-        $basePath = dirname($this->vendorPath);
-        $projectPaths = new ProjectPaths($basePath);
+        // Register ProjectPaths for dependency injection
         $this->container->instance(ProjectPaths::class, $projectPaths);
 
         // Register bindings from all modules
@@ -163,20 +189,15 @@ class Application
             $bindingRegistry->registerModule($module);
         }
 
-        // One shared answer to "which environment is this?" for the whole application
-        $appEnvironment = new AppEnvironment();
         $this->container->instance(AppEnvironment::class, $appEnvironment);
 
-        // Determine whether to hydrate from cache or run live scans.
-        // The gate reads DiscoveryEnvironment ($_ENV with getenv() fallback) — no marko/config dependency.
-        $env = new DiscoveryEnvironment($appEnvironment);
-        $cache = new DiscoveryCache($projectPaths, $env);
-        $useCache = $env->enabled() && !$appEnvironment->isDevelopment() && $cache->exists();
-
-        // Load cache payload once (shared across all four subsystem forks).
-        // A corrupt cache throws DiscoveryCacheException loudly — no silent fallback.
-        /** @var array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[]}|null $cachePayload */
-        $cachePayload = $useCache ? $cache->load() : null;
+        // Contributor sections (routes, entities, ...) for the packages that own them
+        $this->container->instance(
+            CachedDiscovery::class,
+            $cachePayload !== null
+                ? new CachedDiscovery($cachePayload['sections'], $cache->path())
+                : new CachedDiscovery(),
+        );
 
         // Fork 1 — preferences (independent of the other three)
         if ($cachePayload !== null) {
@@ -215,7 +236,7 @@ class Application
         }
 
         // Discover and register routes (if routing package is available)
-        $this->discoverRoutes();
+        $this->discoverRoutes($cachePayload['globalMiddleware'] ?? null);
 
         // Call module boot callbacks last — the full container is assembled so
         // auto-injected dependencies (via call()) resolve without ordering issues.
@@ -239,9 +260,56 @@ class Application
         $autoloader = new ModuleAutoloader(
             modulesPath: $this->modulesPath,
             appPath: $this->appPath,
-            parser: new ManifestParser(),
+            parser: $this->manifestParser,
         );
         $autoloader->register();
+    }
+
+    /**
+     * Register PSR-4 autoloaders for the non-vendor modules of a cached boot, without discovery.
+     *
+     * @param array<ModuleManifest> $modules
+     */
+    private function registerAutoloadersFor(
+        array $modules,
+    ): void {
+        new ModuleAutoloader(
+            modulesPath: $this->modulesPath,
+            appPath: $this->appPath,
+            parser: $this->manifestParser,
+        )->registerModules($modules);
+    }
+
+    /**
+     * Rebuild the module list from the discovery cache. Each module.php is
+     * still required so its closures stay live; a module.php that no longer
+     * matches what the cache was compiled from makes the cache stale.
+     *
+     * @param array<CachedModule> $cachedModules
+     * @return array<ModuleManifest>
+     *
+     * @throws ModuleException|DiscoveryCacheException
+     */
+    private function modulesFromCache(
+        array $cachedModules,
+        string $cachePath,
+    ): array {
+        $modules = [];
+
+        foreach ($cachedModules as $cachedModule) {
+            $manifest = $this->manifestParser->parseCached($cachedModule);
+
+            if (!$cachedModule->matchesLiveManifest($manifest)) {
+                throw DiscoveryCacheException::stale(
+                    $cachePath,
+                    "module.php of '$cachedModule->name' changed its enabled flag, sequence or globalMiddleware since it was compiled",
+                );
+            }
+
+            $modules[] = $manifest;
+        }
+
+        return $modules;
     }
 
     /**
@@ -375,10 +443,13 @@ class Application
     }
 
     /**
-     * @throws ModuleException|RouteException|RouteConflictException|ReflectionException
+     * @param array<int, string>|null $cachedGlobalMiddleware The global middleware order from the discovery cache, or null on a live boot
+     *
+     * @throws ModuleException|RouteException|RouteConflictException|ReflectionException|ContainerExceptionInterface
      */
-    private function discoverRoutes(): void
-    {
+    private function discoverRoutes(
+        ?array $cachedGlobalMiddleware,
+    ): void {
         // Only bootstrap routing if the routing package is available
         if (!class_exists(RoutingBootstrapper::class)) {
             return;
@@ -388,10 +459,11 @@ class Application
             $this->modules,
             $this->container,
             $this->preferenceRegistry,
-            new ClassFileParser(),
+            $this->classFileParser,
         );
 
-        $globalMiddleware = $this->discoverGlobalMiddleware();
+        /** @var array<class-string<MiddlewareInterface>> $globalMiddleware */
+        $globalMiddleware = $cachedGlobalMiddleware ?? $this->discoverGlobalMiddleware();
 
         $this->_router = $bootstrapper->boot($globalMiddleware);
     }

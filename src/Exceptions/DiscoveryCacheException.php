@@ -62,6 +62,17 @@ class DiscoveryCacheException extends MarkoException
         );
     }
 
+    public static function malformedSection(
+        string $key,
+        string $reason,
+    ): self {
+        return new self(
+            message: "Discovery cache section '$key' is malformed: $reason",
+            context: "While hydrating the '$key' section of the discovery cache",
+            suggestion: 'Run `marko discovery:cache` to recompile the cache, or `marko discovery:clear` to fall back to live discovery',
+        );
+    }
+
     public static function invalidContributor(
         string $moduleName,
         string $className,

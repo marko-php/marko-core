@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Marko\Core\Application;
 use Marko\Core\Module\ManifestParser;
 use Marko\Core\Module\ModuleAutoloader;
+use Marko\Core\Module\ModuleManifest;
 
 // Helper to recursively remove a directory
 function moduleAutoloaderCleanup(string $dir): void
@@ -263,6 +264,47 @@ it('leaves Application boot still able to autoload an app module class (regressi
 
     $fqcn = $namespace . $uniqueClass;
     expect(class_exists($fqcn))->toBeTrue();
+
+    moduleAutoloaderCleanup($base);
+});
+
+it('registers autoloaders for the given modules without discovering any', function (): void {
+    $base = sys_get_temp_dir() . '/marko-autoloader-test-' . bin2hex(random_bytes(8));
+    $uniqueId = bin2hex(random_bytes(4));
+    $appNamespace = "AutoloaderGiven$uniqueId";
+    $vendorNamespace = "AutoloaderVendor$uniqueId";
+    mkdir($base . '/shop/src', 0755, true);
+    mkdir($base . '/lib/src', 0755, true);
+    file_put_contents(
+        $base . '/shop/src/Cart.php',
+        "<?php\ndeclare(strict_types=1);\nnamespace $appNamespace;\nclass Cart {}\n",
+    );
+    file_put_contents(
+        $base . '/lib/src/Helper.php',
+        "<?php\ndeclare(strict_types=1);\nnamespace $vendorNamespace;\nclass Helper {}\n",
+    );
+
+    // No composer.json anywhere: registerModules() must not discover or parse.
+    $autoloader = new ModuleAutoloader(modulesPath: '', appPath: '', parser: new ManifestParser());
+    $autoloader->registerModules([
+        new ModuleManifest(
+            name: 'app/shop',
+            version: '1.0.0',
+            path: $base . '/shop',
+            source: 'app',
+            autoload: [$appNamespace . '\\' => 'src/'],
+        ),
+        new ModuleManifest(
+            name: 'acme/lib',
+            version: '1.0.0',
+            path: $base . '/lib',
+            source: 'vendor',
+            autoload: [$vendorNamespace . '\\' => 'src/'],
+        ),
+    ]);
+
+    expect(class_exists($appNamespace . '\\Cart'))->toBeTrue()
+        ->and(class_exists($vendorNamespace . '\\Helper'))->toBeFalse();
 
     moduleAutoloaderCleanup($base);
 });

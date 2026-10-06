@@ -38,12 +38,28 @@ class ModuleAutoloader
     {
         $discovery = new ModuleDiscovery($this->parser);
 
-        $modules = array_merge(
+        $this->registerModules(array_merge(
             $discovery->discoverInModules($this->modulesPath),
             $discovery->discoverInApp($this->appPath),
-        );
+        ));
+    }
 
+    /**
+     * Register a PSR-4 autoloader for each given module without discovering anything,
+     * e.g. for the module list a discovery-cache boot already has.
+     *
+     * Vendor modules are skipped — Composer already autoloads them.
+     *
+     * @param array<ModuleManifest> $modules
+     */
+    public function registerModules(
+        array $modules,
+    ): void {
         foreach ($modules as $module) {
+            if ($module->source === 'vendor') {
+                continue;
+            }
+
             foreach ($module->autoload as $namespace => $path) {
                 $absolutePath = $module->path . '/' . rtrim($path, '/');
                 $key = $namespace . ':' . $absolutePath;

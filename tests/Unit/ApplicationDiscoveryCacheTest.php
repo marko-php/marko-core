@@ -78,6 +78,10 @@ function cacheTestCleanupDirectory(string $dir): void
 /**
  * Write a valid discovery cache file at the default path under $basePath.
  *
+ * The routing package is autoloadable in this monorepo, so a cached boot bootstraps
+ * routing and reads its 'routes' section; an empty one stands in for a project
+ * without routes.
+ *
  * @param array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[]} $payload
  */
 function cacheTestWriteCache(string $basePath, array $payload): void
@@ -85,7 +89,7 @@ function cacheTestWriteCache(string $basePath, array $payload): void
     $projectPaths = new ProjectPaths($basePath);
     $env = new DiscoveryEnvironment();
     $cache = new DiscoveryCache($projectPaths, $env);
-    $cache->write($payload);
+    $cache->write($payload + ['sections' => ['routes' => []]]);
 }
 
 /**
