@@ -104,8 +104,9 @@ class Application
     /**
      * @throws ModuleException|CircularDependencyException|BindingConflictException|BindingException|PluginException|PreferenceConflictException|EventException|ContainerExceptionInterface|RouteException|RouteConflictException|CommandException|ReflectionException|RuntimeException|DiscoveryCacheException
      */
-    public static function boot(string $basePath): self
-    {
+    public static function boot(
+        string $basePath,
+    ): self {
         if (!is_dir($basePath)) {
             throw new RuntimeException("Base path does not exist: $basePath");
         }
@@ -389,8 +390,9 @@ class Application
      *
      * @throws PreferenceConflictException
      */
-    private function registerPreferencesFromCache(array $records): void
-    {
+    private function registerPreferencesFromCache(
+        array $records,
+    ): void {
         foreach ($records as $record) {
             $this->preferenceRegistry->register(
                 $record->replaces,
@@ -404,8 +406,9 @@ class Application
      *
      * @throws PluginException|ReflectionException
      */
-    private function registerPluginsFromCache(array $definitions): void
-    {
+    private function registerPluginsFromCache(
+        array $definitions,
+    ): void {
         foreach ($definitions as $definition) {
             $this->pluginRegistry->register($definition);
         }
@@ -414,8 +417,9 @@ class Application
     /**
      * @param ObserverDefinition[] $definitions
      */
-    private function registerObserversFromCache(array $definitions): void
-    {
+    private function registerObserversFromCache(
+        array $definitions,
+    ): void {
         $this->observerRegistry = new ObserverRegistry();
 
         foreach ($definitions as $definition) {
@@ -428,8 +432,9 @@ class Application
      *
      * @throws CommandException
      */
-    private function registerCommandsFromCache(array $definitions): void
-    {
+    private function registerCommandsFromCache(
+        array $definitions,
+    ): void {
         $this->commandRegistry = new CommandRegistry();
 
         foreach ($definitions as $definition) {

@@ -26,8 +26,9 @@ class CompilerTestRoutesContributor implements DiscoveryCacheContributorInterfac
         return 'routes';
     }
 
-    public function compile(array $modules): array
-    {
+    public function compile(
+        array $modules,
+    ): array {
         return [
             'greeting' => $this->greeting->text,
             'modules' => array_map(fn (ModuleManifest $m): string => $m->name, $modules),
@@ -42,8 +43,9 @@ class CompilerTestEntitiesContributor implements DiscoveryCacheContributorInterf
         return 'entities';
     }
 
-    public function compile(array $modules): array
-    {
+    public function compile(
+        array $modules,
+    ): array {
         return ['App\\Entity\\Post'];
     }
 }
@@ -63,8 +65,9 @@ class CompilerTestObjectContributor extends CompilerTestEntitiesContributor
         return 'objects';
     }
 
-    public function compile(array $modules): array
-    {
+    public function compile(
+        array $modules,
+    ): array {
         return ['nested' => [new stdClass()]];
     }
 }
@@ -72,8 +75,10 @@ class CompilerTestObjectContributor extends CompilerTestEntitiesContributor
 /**
  * @param array<int, string> $discovery
  */
-function compilerContributorModule(string $name, array $discovery = []): ModuleManifest
-{
+function compilerContributorModule(
+    string $name,
+    array $discovery = [],
+): ModuleManifest {
     return new ModuleManifest(
         name: $name,
         version: '1.0.0',

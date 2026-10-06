@@ -8,8 +8,9 @@ use Marko\Core\Module\ModuleAutoloader;
 use Marko\Core\Module\ModuleManifest;
 
 // Helper to recursively remove a directory
-function moduleAutoloaderCleanup(string $dir): void
-{
+function moduleAutoloaderCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }

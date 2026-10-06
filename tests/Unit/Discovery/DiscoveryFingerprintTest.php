@@ -18,8 +18,9 @@ function fingerprintProject(): string
     return $base;
 }
 
-function fingerprintCleanup(string $dir): void
-{
+function fingerprintCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }

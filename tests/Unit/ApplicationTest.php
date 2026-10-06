@@ -1611,7 +1611,7 @@ it('CliKernel.php calls initialize() instead of boot()', function (): void {
     $cliKernelPath = realpath(dirname(__DIR__, 3) . '/cli/src/CliKernel.php');
     $content = file_get_contents($cliKernelPath);
 
-    expect($content)->toContain('$app->initialize()')
+    expect($content)->toContain('$app->initialize(')
         ->and($content)->not->toContain('$app->boot()');
 });
 

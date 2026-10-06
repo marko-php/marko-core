@@ -54,8 +54,9 @@ function cacheTestSnapshotEnv(): Closure
 /**
  * Recursively delete a directory and all its contents.
  */
-function cacheTestCleanupDirectory(string $dir): void
-{
+function cacheTestCleanupDirectory(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }
@@ -84,8 +85,10 @@ function cacheTestCleanupDirectory(string $dir): void
  *
  * @param array{preferences: PreferenceRecord[], plugins: PluginDefinition[], observers: ObserverDefinition[], commands: CommandDefinition[]} $payload
  */
-function cacheTestWriteCache(string $basePath, array $payload): void
-{
+function cacheTestWriteCache(
+    string $basePath,
+    array $payload,
+): void {
     $projectPaths = new ProjectPaths($basePath);
     $env = new DiscoveryEnvironment();
     $cache = new DiscoveryCache($projectPaths, $env);
@@ -95,8 +98,9 @@ function cacheTestWriteCache(string $basePath, array $payload): void
 /**
  * Write a corrupt (non-PHP-return-array) cache file so DiscoveryCache::load() throws.
  */
-function cacheTestWriteCorruptCache(string $basePath): void
-{
+function cacheTestWriteCorruptCache(
+    string $basePath,
+): void {
     $cachePath = $basePath . '/storage/cache/discovery.php';
     $dir = dirname($cachePath);
     if (!is_dir($dir)) {
@@ -108,8 +112,10 @@ function cacheTestWriteCorruptCache(string $basePath): void
 /**
  * Create a minimal Marko module directory (composer.json only, no src/).
  */
-function cacheTestCreateModule(string $path, string $name): void
-{
+function cacheTestCreateModule(
+    string $path,
+    string $name,
+): void {
     mkdir($path, 0755, true);
     file_put_contents($path . '/composer.json', json_encode([
         'name' => $name,
@@ -124,8 +130,11 @@ function cacheTestCreateModule(string $path, string $name): void
  *
  * @return array{class: string, commandName: string}
  */
-function cacheTestCreateCommandModule(string $modulePath, string $moduleName, string $uniqueId): array
-{
+function cacheTestCreateCommandModule(
+    string $modulePath,
+    string $moduleName,
+    string $uniqueId,
+): array {
     cacheTestCreateModule($modulePath, $moduleName);
     mkdir($modulePath . '/src', 0755, true);
 

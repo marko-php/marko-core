@@ -15,8 +15,9 @@ use Marko\Core\Path\ProjectPaths;
 use Marko\Core\Plugin\PluginDiscovery;
 
 // Helper to create a temp module directory with an src/ folder
-function makeCompilerTestModule(string $name): array
-{
+function makeCompilerTestModule(
+    string $name,
+): array {
     $tempDir = sys_get_temp_dir() . '/marko_compiler_test_' . bin2hex(random_bytes(8));
     mkdir($tempDir . '/src', 0755, true);
 
@@ -36,8 +37,9 @@ function makeCompilerTestModule(string $name): array
 }
 
 // Recursively remove a directory
-function compilerTestCleanup(string $dir): void
-{
+function compilerTestCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }
@@ -204,8 +206,10 @@ use Marko\Core\Command\Output;
 #[Command(name: 'test:run', description: 'Run test command', aliases: ['tr'])]
 class TestCommand implements CommandInterface
 {
-    public function execute(Input $input, Output $output): int
-    {
+    public function execute(
+        Input $input,
+        Output $output,
+    ): int {
         return 0;
     }
 }

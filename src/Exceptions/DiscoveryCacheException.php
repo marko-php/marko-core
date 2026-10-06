@@ -8,8 +8,9 @@ use Marko\Core\Discovery\DiscoveryCacheContributorInterface;
 
 class DiscoveryCacheException extends MarkoException
 {
-    public static function unreadable(string $path): self
-    {
+    public static function unreadable(
+        string $path,
+    ): self {
         return new self(
             message: "Discovery cache file '$path' could not be read",
             context: "While loading the discovery cache from '$path'",
@@ -109,8 +110,9 @@ class DiscoveryCacheException extends MarkoException
         );
     }
 
-    public static function notWritable(string $path): self
-    {
+    public static function notWritable(
+        string $path,
+    ): self {
         return new self(
             message: "Discovery cache file '$path' could not be written",
             context: "While writing the discovery cache to '$path'",

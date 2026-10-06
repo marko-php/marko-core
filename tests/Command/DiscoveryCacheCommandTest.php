@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
-use Marko\Core\Container\Container;
 use Marko\Core\Commands\DiscoveryCacheCommand;
+use Marko\Core\Container\Container;
 use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryCompiler;
 use Marko\Core\Discovery\DiscoveryEnvironment;
@@ -26,8 +26,9 @@ afterEach(function (): void {
     }
 });
 
-function makeDiscoveryCacheSetup(string $cacheDir): array
-{
+function makeDiscoveryCacheSetup(
+    string $cacheDir,
+): array {
     $cachePath = $cacheDir . '/discovery.php';
     $_ENV['DISCOVERY_CACHE_PATH'] = $cachePath;
     $paths = new ProjectPaths($cacheDir);
@@ -57,8 +58,9 @@ function makeDiscoveryCacheSetup(string $cacheDir): array
     ];
 }
 
-function discoveryCacheTestCleanup(string $dir): void
-{
+function discoveryCacheTestCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }

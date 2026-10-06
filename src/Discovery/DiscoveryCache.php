@@ -63,8 +63,9 @@ class DiscoveryCache
         return $this->projectPaths->base . '/' . $path;
     }
 
-    private function isAbsolutePath(string $path): bool
-    {
+    private function isAbsolutePath(
+        string $path,
+    ): bool {
         return str_starts_with($path, '/') || (strlen($path) >= 3 && ctype_alpha($path[0]) && $path[1] === ':');
     }
 
@@ -106,8 +107,9 @@ class DiscoveryCache
      *
      * @throws DiscoveryCacheException
      */
-    public function write(array $payload): void
-    {
+    public function write(
+        array $payload,
+    ): void {
         $path = $this->resolveCachePath();
         $dir = dirname($path);
 

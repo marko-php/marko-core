@@ -46,8 +46,9 @@ readonly class DiscoveryCompiler
      *
      * @throws DiscoveryCacheException|ModuleException|ContainerExceptionInterface
      */
-    public function compile(array $modules): array
-    {
+    public function compile(
+        array $modules,
+    ): array {
         return [
             'version' => DiscoveryCache::CACHE_VERSION,
             'modules' => array_values($modules),
@@ -64,8 +65,9 @@ readonly class DiscoveryCompiler
      * @param array<ModuleManifest> $modules
      * @return PreferenceRecord[]
      */
-    private function runPreferenceDiscovery(array $modules): array
-    {
+    private function runPreferenceDiscovery(
+        array $modules,
+    ): array {
         $discovery = new PreferenceDiscovery();
         $records = [];
 
@@ -80,8 +82,9 @@ readonly class DiscoveryCompiler
      * @param array<ModuleManifest> $modules
      * @return PluginDefinition[]
      */
-    private function runPluginDiscovery(array $modules): array
-    {
+    private function runPluginDiscovery(
+        array $modules,
+    ): array {
         $discovery = new PluginDiscovery();
         $definitions = [];
 
@@ -96,8 +99,9 @@ readonly class DiscoveryCompiler
      * @param array<ModuleManifest> $modules
      * @return ObserverDefinition[]
      */
-    private function runObserverDiscovery(array $modules): array
-    {
+    private function runObserverDiscovery(
+        array $modules,
+    ): array {
         $discovery = new ObserverDiscovery(new ClassFileParser());
 
         return $discovery->discover($modules);
@@ -107,8 +111,9 @@ readonly class DiscoveryCompiler
      * @param array<ModuleManifest> $modules
      * @return CommandDefinition[]
      */
-    private function runCommandDiscovery(array $modules): array
-    {
+    private function runCommandDiscovery(
+        array $modules,
+    ): array {
         $discovery = new CommandDiscovery(new ClassFileParser());
 
         return $discovery->discover($modules);
@@ -123,8 +128,9 @@ readonly class DiscoveryCompiler
      *
      * @throws ModuleException
      */
-    private function resolveGlobalMiddleware(array $modules): array
-    {
+    private function resolveGlobalMiddleware(
+        array $modules,
+    ): array {
         if (!interface_exists(MiddlewareInterface::class)) {
             return [];
         }
@@ -138,8 +144,9 @@ readonly class DiscoveryCompiler
      *
      * @throws DiscoveryCacheException|ContainerExceptionInterface
      */
-    private function runContributors(array $modules): array
-    {
+    private function runContributors(
+        array $modules,
+    ): array {
         $sections = [];
 
         /** @var array<string, string> $owners section key => contributor class */

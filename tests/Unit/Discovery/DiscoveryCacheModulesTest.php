@@ -18,8 +18,9 @@ function modulesCacheBase(): string
     return $base;
 }
 
-function modulesCacheCleanup(string $dir): void
-{
+function modulesCacheCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }
@@ -40,8 +41,9 @@ function modulesCacheCleanup(string $dir): void
  * @param array<string, mixed> $extra
  * @return array<string, mixed>
  */
-function modulesCachePayload(array $extra = []): array
-{
+function modulesCachePayload(
+    array $extra = [],
+): array {
     return [
         'preferences' => [],
         'plugins' => [],
@@ -85,7 +87,12 @@ describe('DiscoveryCache modules, middleware, sections and staleness', function 
                     globalMiddleware: ['App\\CoreMiddleware'],
                 ),
                 new ModuleManifest(name: 'app/blog', version: '1.0.0', path: $this->base . '/app/blog', source: 'app'),
-                new ModuleManifest(name: 'acme/outside', version: '1.0.0', path: '/opt/shared/outside', source: 'modules'),
+                new ModuleManifest(
+                    name: 'acme/outside',
+                    version: '1.0.0',
+                    path: '/opt/shared/outside',
+                    source: 'modules',
+                ),
             ],
         ]));
 
@@ -125,22 +132,28 @@ describe('DiscoveryCache modules, middleware, sections and staleness', function 
             ]);
     });
 
-    it('throws a stale DiscoveryCacheException when installed.json changes after the cache is written', function (): void {
-        $this->cache->write(modulesCachePayload());
+    it(
+        'throws a stale DiscoveryCacheException when installed.json changes after the cache is written',
+        function (): void {
+            $this->cache->write(modulesCachePayload());
 
-        file_put_contents($this->base . '/vendor/composer/installed.json', '{"packages": [{"name": "acme/new"}]}');
+            file_put_contents($this->base . '/vendor/composer/installed.json', '{"packages": [{"name": "acme/new"}]}');
 
-        expect(fn () => $this->cache->load())->toThrow(DiscoveryCacheException::class, 'is stale');
-    });
+            expect(fn () => $this->cache->load())->toThrow(DiscoveryCacheException::class, 'is stale');
+        },
+    );
 
-    it('throws a stale DiscoveryCacheException when a module directory is added under app or modules', function (): void {
-        $this->cache->write(modulesCachePayload());
+    it(
+        'throws a stale DiscoveryCacheException when a module directory is added under app or modules',
+        function (): void {
+            $this->cache->write(modulesCachePayload());
 
-        mkdir($this->base . '/app/admin', 0755, true);
-        file_put_contents($this->base . '/app/admin/composer.json', '{"name": "app/admin"}');
+            mkdir($this->base . '/app/admin', 0755, true);
+            file_put_contents($this->base . '/app/admin/composer.json', '{"name": "app/admin"}');
 
-        expect(fn () => $this->cache->load())->toThrow(DiscoveryCacheException::class, 'is stale');
-    });
+            expect(fn () => $this->cache->load())->toThrow(DiscoveryCacheException::class, 'is stale');
+        },
+    );
 
     it('suggests running discovery:cache after deploying when the cache is stale', function (): void {
         $this->cache->write(modulesCachePayload());
@@ -171,15 +184,24 @@ describe('DiscoveryCache modules, middleware, sections and staleness', function 
         $version = DiscoveryCache::CACHE_VERSION;
         $base = "'version' => $version, 'fingerprint' => 'x', 'preferences' => [], 'plugins' => [], 'observers' => [], 'commands' => []";
 
-        file_put_contents($path, "<?php return [$base, 'globalMiddleware' => [], 'modules' => [['name' => 'a/b']], 'sections' => []];");
+        file_put_contents(
+            $path,
+            "<?php return [$base, 'globalMiddleware' => [], 'modules' => [['name' => 'a/b']], 'sections' => []];",
+        );
         expect(fn () => $this->cache->load())
             ->toThrow(DiscoveryCacheException::class, "modules[0] missing required field 'version'");
 
-        file_put_contents($path, "<?php return [$base, 'globalMiddleware' => [], 'modules' => [], 'sections' => ['routes' => 'nope']];");
+        file_put_contents(
+            $path,
+            "<?php return [$base, 'globalMiddleware' => [], 'modules' => [], 'sections' => ['routes' => 'nope']];",
+        );
         expect(fn () => $this->cache->load())
             ->toThrow(DiscoveryCacheException::class, 'sections.routes must be an array');
 
-        file_put_contents($path, "<?php return [$base, 'globalMiddleware' => [1], 'modules' => [], 'sections' => []];");
+        file_put_contents(
+            $path,
+            "<?php return [$base, 'globalMiddleware' => [1], 'modules' => [], 'sections' => []];",
+        );
         expect(fn () => $this->cache->load())
             ->toThrow(DiscoveryCacheException::class, 'globalMiddleware[0] must be a string');
 

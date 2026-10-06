@@ -9,8 +9,9 @@ use Marko\Core\Module\ModuleDiscovery;
 /**
  * Create a temp module directory with a composer.json and an optional module.php body.
  */
-function cachedManifestModule(?string $modulePhp = null): string
-{
+function cachedManifestModule(
+    ?string $modulePhp = null,
+): string {
     $dir = sys_get_temp_dir() . '/marko-cached-manifest-' . bin2hex(random_bytes(6));
     mkdir($dir, 0755, true);
     file_put_contents($dir . '/composer.json', json_encode([
@@ -28,8 +29,9 @@ function cachedManifestModule(?string $modulePhp = null): string
     return $dir;
 }
 
-function cachedManifestCleanup(string $dir): void
-{
+function cachedManifestCleanup(
+    string $dir,
+): void {
     array_map('unlink', glob($dir . '/*') ?: []);
     rmdir($dir);
 }
@@ -79,7 +81,9 @@ describe('ManifestParser cached modules', function (): void {
     });
 
     it('keeps module.php closures live when building a manifest from a cached module', function (): void {
-        $dir = cachedManifestModule("<?php return ['boot' => fn (): string => 'booted', 'bindings' => ['A' => fn (): string => 'b']];");
+        $dir = cachedManifestModule(
+            "<?php return ['boot' => fn (): string => 'booted', 'bindings' => ['A' => fn (): string => 'b']];",
+        );
 
         $manifest = (new ManifestParser())->parseCached(new CachedModule(
             name: 'acme/blog',

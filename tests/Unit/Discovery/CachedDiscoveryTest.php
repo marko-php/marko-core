@@ -25,7 +25,10 @@ describe('CachedDiscovery', function (): void {
         $cachedDiscovery = new CachedDiscovery([], '/tmp/discovery.php');
 
         expect(fn () => $cachedDiscovery->section('entities'))
-            ->toThrow(DiscoveryCacheException::class, "Discovery cache file '/tmp/discovery.php' has no 'entities' section");
+            ->toThrow(
+                DiscoveryCacheException::class,
+                "Discovery cache file '/tmp/discovery.php' has no 'entities' section",
+            );
     });
 
     it('autowires an uncached CachedDiscovery when constructed with no arguments', function (): void {

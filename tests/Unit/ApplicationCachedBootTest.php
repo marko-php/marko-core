@@ -40,8 +40,9 @@ function cachedBootProject(): array
     return ['base' => $base, 'class' => "$namespace\\Post"];
 }
 
-function cachedBootCleanup(string $dir): void
-{
+function cachedBootCleanup(
+    string $dir,
+): void {
     if (!is_dir($dir)) {
         return;
     }
@@ -58,8 +59,9 @@ function cachedBootCleanup(string $dir): void
     rmdir($dir);
 }
 
-function cachedBootApplication(string $base): Application
-{
+function cachedBootApplication(
+    string $base,
+): Application {
     return new Application(vendorPath: "$base/vendor", modulesPath: "$base/modules", appPath: "$base/app");
 }
 
@@ -67,8 +69,9 @@ function cachedBootApplication(string $base): Application
  * Compile the cache from a live boot. marko/routing is autoloadable in this monorepo but not
  * installed as a module here, so its 'routes' section is added by hand.
  */
-function cachedBootCompile(string $base): void
-{
+function cachedBootCompile(
+    string $base,
+): void {
     $live = cachedBootApplication($base);
     $live->initialize(false);
     $payload = new DiscoveryCompiler($live->container)->compile($live->modules);
@@ -206,7 +209,10 @@ describe('Application cached boot', function (): void {
         file_put_contents($this->project['base'] . '/vendor/composer/installed.json', '{"packages": []}');
         cachedBootCompile($this->project['base']);
 
-        file_put_contents($this->project['base'] . '/vendor/composer/installed.json', '{"packages": [{"name": "acme/new"}]}');
+        file_put_contents(
+            $this->project['base'] . '/vendor/composer/installed.json',
+            '{"packages": [{"name": "acme/new"}]}',
+        );
 
         expect(fn () => cachedBootApplication($this->project['base'])->initialize())
             ->toThrow(DiscoveryCacheException::class, 'is stale');
